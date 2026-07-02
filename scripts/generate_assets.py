@@ -188,20 +188,6 @@ def robber_asset() -> Image.Image:
     return image
 
 
-def piece_asset(kind: str) -> Image.Image:
-    image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    fill = (255, 255, 255, 120)
-    outline = (0, 0, 0, 200)
-    if kind == "settlement":
-        draw.polygon([(128, 40), (50, 116), (70, 216), (186, 216), (206, 116)], fill=fill, outline=outline)
-    elif kind == "city":
-        draw.polygon([(48, 216), (48, 96), (94, 96), (94, 44), (148, 44), (148, 116), (208, 116), (208, 216)], fill=fill, outline=outline)
-    else:
-        draw.rounded_rectangle((36, 100, 220, 156), radius=24, fill=fill, outline=outline, width=5)
-    return image
-
-
 def token_asset() -> Image.Image:
     image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -242,9 +228,6 @@ def main() -> int:
     for value in range(1, 7):
         save(dice_asset(value), f"dice_{value}.png", args.force)
     save(robber_asset(), "icon_robber.png", args.force)
-    save(piece_asset("settlement"), "piece_settlement.png", args.force)
-    save(piece_asset("city"), "piece_city.png", args.force)
-    save(piece_asset("road"), "piece_road.png", args.force)
     save(token_asset(), "number_token.png", args.force)
     save(dev_card("development", (58, 65, 82)), "card_back_development.png", args.force)
     save(port_asset("3to1"), "port_3to1.png", args.force)

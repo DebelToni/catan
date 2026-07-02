@@ -6,7 +6,7 @@ const TERRAIN_COLORS = {forest: "#2d6a4f", pasture: "#90be6d", field: "#e9c46a",
 const ASSET_NAMES = [
   "terrain_forest", "terrain_pasture", "terrain_field", "terrain_hill", "terrain_mountain", "terrain_desert", "terrain_sea",
   "resource_lumber", "resource_brick", "resource_wool", "resource_grain", "resource_ore",
-  "icon_robber", "piece_settlement", "piece_city", "piece_road", "number_token",
+  "icon_robber", "number_token",
   "dev_knight", "dev_road_building", "dev_year_of_plenty", "dev_monopoly", "dev_victory_point", "card_back_development",
   "port_3to1", "port_lumber", "port_brick", "port_wool", "port_grain", "port_ore",
   "largest_army", "longest_road", "dice_1", "dice_2", "dice_3", "dice_4", "dice_5", "dice_6"
@@ -594,8 +594,6 @@ function drawBuildings() {
     if (building.type === "city") drawCityShape(p.x, p.y, size);
     else drawSettlementShape(p.x, p.y, size);
     ctx.fill(); ctx.stroke();
-    const image = assets[`piece_${building.type}`];
-    if (image?.complete) ctx.drawImage(image, p.x - size / 2, p.y - size / 2, size, size);
     ctx.restore();
   }
 }

@@ -12,6 +12,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Standard 19-hex base island with randomized resources/numbers from a seed and no adjacent 6/8 numbers.
 - Generic board topology generation: hexes, vertices, edges, ports, adjacency, robber tile, roads, settlements, and cities are derived from the map config so custom maps can be added later.
 - Generated placeholder PNG assets in `app/static/assets/`. Existing assets are loaded directly by the browser, so redrawing a PNG and restarting/refreshing uses the new art.
+- Roads, settlements, and cities are rendered programmatically in the player's selected color, so they do not use PNG assets.
 
 ## Game settings
 - Points to win: default 10, configurable 1-30.
@@ -72,7 +73,7 @@ Resource cards: `resource_lumber.png`, `resource_brick.png`, `resource_wool.png`
 
 Development cards: `dev_knight.png`, `dev_road_building.png`, `dev_year_of_plenty.png`, `dev_monopoly.png`, `dev_victory_point.png`, `card_back_development.png`.
 
-Board/UI pieces: `icon_robber.png`, `piece_settlement.png`, `piece_city.png`, `piece_road.png`, `number_token.png`, `largest_army.png`, `longest_road.png`.
+Board/UI pieces: `icon_robber.png`, `number_token.png`, `largest_army.png`, `longest_road.png`. Roads, settlements, and cities are canvas shapes colored per player.
 
 Ports: `port_3to1.png`, `port_lumber.png`, `port_brick.png`, `port_wool.png`, `port_grain.png`, `port_ore.png`.
 
