@@ -68,7 +68,11 @@
       <section class="left-stage">
         <section class="board-panel">
           <canvas id="boardCanvas"></canvas>
-          <div id="diceStrip" class="dice-strip board-dice"></div>
+          <button id="diceRoller" class="dice-roller" title="Roll dice">
+            <img id="dieOne" src="/static/assets/dice_1.png" alt="die one">
+            <img id="dieTwo" src="/static/assets/dice_1.png" alt="die two">
+            <span id="diceTotal" class="dice-total">dice</span>
+          </button>
           <div id="canvasHint" class="canvas-hint">Drag to pan · wheel to zoom · choose an action below, then click the board</div>
         </section>
 
@@ -134,7 +138,10 @@
         </section>
 
         <section class="card compact log-card">
-          <h3>Log</h3>
+          <div class="log-header">
+            <h3>Chat</h3>
+            <button id="chatOnlyToggle" class="tiny-toggle active" title="Show only chat messages">✓</button>
+          </div>
           <div id="logList"></div>
           <div class="chat-row"><input id="chatInput" maxlength="300" placeholder="chat"><button id="chatBtn">Send</button></div>
         </section>

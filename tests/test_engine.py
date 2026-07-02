@@ -1,7 +1,7 @@
 import pytest
 
 from app.game_engine import GameError, GameStore, RESOURCE_TYPES
-from app.maps import generate_standard_map
+from app.maps import generate_standard_map, has_adjacent_same_resources, has_adjacent_red_numbers
 
 
 def join_players(store, game, count=2):
@@ -24,14 +24,8 @@ def test_standard_map_distribution_and_red_numbers_not_adjacent():
     assert terrains.count("mountain") == 3
     assert terrains.count("desert") == 1
     assert sorted(hex_tile["number"] for hex_tile in board["hexes"] if hex_tile["number"]) == [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
-    by_coord = {(hex_tile["q"], hex_tile["r"]): hex_tile for hex_tile in board["hexes"]}
-    directions = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
-    for hex_tile in board["hexes"]:
-        if hex_tile["number"] not in {6, 8}:
-            continue
-        for dq, dr in directions:
-            neighbor = by_coord.get((hex_tile["q"] + dq, hex_tile["r"] + dr))
-            assert not neighbor or neighbor["number"] not in {6, 8}
+    assert not has_adjacent_red_numbers(board["hexes"])
+    assert not has_adjacent_same_resources(board["hexes"])
 
 
 def test_settlement_distance_rule_blocks_adjacent_intersection():

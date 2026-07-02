@@ -19,10 +19,12 @@ let playerId = null;
 let selectedAction = null;
 let pendingRobberHexId = null;
 let lastRollKey = "";
+let diceAnimationTimer = null;
 let bankSelection = {give: "lumber", receive: "grain"};
 let offerGiveSelection = emptyResourceSelection();
 let offerReceiveSelection = emptyResourceSelection();
 let discardSelection = emptyResourceSelection();
+let chatOnly = readJson("catanChatOnly", true);
 let profile = readJson("catanProfile", {name: "", color: "red"});
 let savedPlayers = readJson("catanPlayers", {});
 let createColor = profile.color || "red";
@@ -171,6 +173,9 @@ function setupControls() {
     toast("Copied share link.");
   });
   el("fitBoardBtn").addEventListener("click", () => { fitBoard(true); drawBoard(); });
+  el("diceRoller").addEventListener("click", () => {
+    if (state?.current_player_id === playerId && state?.turn_stage === "must_roll") emit("roll_dice");
+  });
   el("bankTradeBtn").addEventListener("click", () => emit("bank_trade", {give: bankSelection.give, receive: bankSelection.receive}));
   el("offerBtn").addEventListener("click", () => {
     emit("create_trade_offer", {give: offerGiveSelection, receive: offerReceiveSelection});
@@ -185,6 +190,11 @@ function setupControls() {
   });
   el("chatBtn").addEventListener("click", sendChat);
   el("chatInput").addEventListener("keydown", (event) => { if (event.key === "Enter") sendChat(); });
+  el("chatOnlyToggle").addEventListener("click", () => {
+    chatOnly = !chatOnly;
+    writeJson("catanChatOnly", chatOnly);
+    renderLog();
+  });
 }
 
 function sendChat() {
@@ -216,6 +226,7 @@ function renderAll() {
   renderRobberPanel();
   renderTrades();
   renderLog();
+  renderDiceStrip();
   drawBoard();
 }
 
@@ -264,9 +275,8 @@ function renderTurn() {
   }
 
   if (state.turn_stage === "must_roll") {
-    addControl("Roll dice", () => emit("roll_dice"), "primary");
     selectedAction = null;
-    el("actionHelp").textContent = "Roll to produce resources. Rolling 7 triggers discards and robber movement.";
+    el("actionHelp").textContent = "Click the dice on the water to roll. Rolling 7 triggers discards and robber movement.";
   } else if (state.turn_stage === "main") {
     addActionControl("Road", "road");
     addActionControl("Settlement", "settlement");
@@ -461,8 +471,11 @@ function renderResourcePicker(container, options) {
 }
 
 function renderLog() {
-  const logLines = (state.chat || []).map((item) => `${item.name}: ${item.text}`).concat(state.log || []);
-  el("logList").innerHTML = logLines.slice(-20).map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+  const toggle = el("chatOnlyToggle");
+  toggle?.classList.toggle("active", chatOnly);
+  const chatLines = (state.chat || []).map((item) => `${item.name}: ${item.text}`);
+  const logLines = chatOnly ? chatLines : chatLines.concat(state.log || []);
+  el("logList").innerHTML = logLines.slice(-20).map((line) => `<div>${escapeHtml(line)}</div>`).join("") || `<div class="subtle">No chat yet.</div>`;
 }
 
 function setupCanvas() {
@@ -684,9 +697,9 @@ function drawRobber() {
   const hex = state.board.hexes.find((item) => item.id === state.robber_hex_id);
   if (!hex) return;
   const p = worldToScreen(hex.x, hex.y);
-  const size = clamp(view.scale * 0.9, 56, 104);
+  const size = 96;
   const image = assets.icon_robber;
-  if (image?.complete) ctx.drawImage(image, p.x - size / 2, p.y - size * 0.88, size, size);
+  if (image?.complete) ctx.drawImage(image, p.x - size / 2, p.y - size * 0.82, size, size);
   else {
     ctx.fillStyle = "#222";
     ctx.beginPath(); ctx.arc(p.x, p.y - size * .35, size * .32, 0, Math.PI * 2); ctx.fill();
@@ -818,24 +831,38 @@ function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function portAssetName(kind) { return kind === "3:1" ? "port_3to1" : `port_${kind}`; }
 function shortResource(resource) { return {lumber: "Lu", brick: "Br", wool: "Wo", grain: "Gr", ore: "Or"}[resource] || resource.slice(0, 2); }
 
-function animateDice(roll) {
-  const strip = el("diceStrip");
-  const pairs = [];
-  for (let index = 0; index < 11; index++) pairs.push([randDie(), randDie()]);
-  pairs.push([roll.die1, roll.die2]);
-  strip.innerHTML = pairs.map((pair, index) => dicePairHtml(pair, index === 0)).join("");
-  let active = 0;
-  const timer = setInterval(() => {
-    const nodes = strip.querySelectorAll(".dice-pair");
-    nodes.forEach((node) => node.classList.remove("active"));
-    nodes[Math.min(active, nodes.length - 1)]?.classList.add("active");
-    active += 1;
-    if (active > pairs.length) clearInterval(timer);
-  }, 70);
+function renderDiceStrip() {
+  if (diceAnimationTimer) return;
+  const roll = state?.last_roll || state?.dice_history?.[state.dice_history.length - 1];
+  setDiceImages(roll?.die1 || 1, roll?.die2 || 1, roll ? roll.total : "dice");
+  el("diceRoller").classList.toggle("can-roll", state?.current_player_id === playerId && state?.turn_stage === "must_roll");
 }
 
-function dicePairHtml(pair, active = false) {
-  return `<div class="dice-pair ${active ? "active" : ""}"><img src="/static/assets/dice_${pair[0]}.png" alt="${pair[0]}"><img src="/static/assets/dice_${pair[1]}.png" alt="${pair[1]}"></div>`;
+function animateDice(roll) {
+  clearInterval(diceAnimationTimer);
+  const roller = el("diceRoller");
+  roller.classList.add("rolling");
+  let ticks = 0;
+  diceAnimationTimer = setInterval(() => {
+    ticks += 1;
+    if (ticks >= 12) {
+      clearInterval(diceAnimationTimer);
+      diceAnimationTimer = null;
+      roller.classList.remove("rolling");
+      setDiceImages(roll.die1, roll.die2, roll.total);
+      renderDiceStrip();
+      return;
+    }
+    setDiceImages(randDie(), randDie(), "");
+  }, 55);
+}
+
+function setDiceImages(die1, die2, total) {
+  el("dieOne").src = `/static/assets/dice_${die1}.png`;
+  el("dieOne").alt = `die ${die1}`;
+  el("dieTwo").src = `/static/assets/dice_${die2}.png`;
+  el("dieTwo").alt = `die ${die2}`;
+  el("diceTotal").textContent = total;
 }
 
 function randDie() { return Math.floor(Math.random() * 6) + 1; }

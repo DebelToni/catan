@@ -18,7 +18,8 @@ TERRAIN_DISTRIBUTION = [
     "mountain", "mountain", "mountain",
     "desert",
 ]
-NUMBER_TOKENS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
+# Official letter-token order used when placing numbers in a spiral and skipping the desert.
+NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11]
 RESOURCE_PORTS = ["lumber", "brick", "wool", "grain", "ore"]
 PORT_TYPES = ["3:1", "3:1", "3:1", "3:1", *RESOURCE_PORTS]
 HEX_DIRECTIONS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
@@ -28,36 +29,30 @@ SQRT3 = math.sqrt(3)
 def generate_standard_map(seed: str | int | None = None) -> dict[str, Any]:
     rng = random.Random(seed)
     coords = list(STANDARD_COORDS)
-    terrains = list(TERRAIN_DISTRIBUTION)
-    rng.shuffle(terrains)
+    best_hexes = None
+    best_score = 10**9
 
-    for _ in range(2000):
-        numbers = list(NUMBER_TOKENS)
-        rng.shuffle(numbers)
-        hexes = build_hex_specs(coords, terrains, numbers)
-        if not has_adjacent_red_numbers(hexes):
-            return attach_topology({
-                "id": "standard",
-                "name": "Standard 3-4-5-4-3 Island",
-                "hexes": hexes,
-                "ports": build_ports(rng),
-            })
+    for _ in range(12000):
+        terrains = list(TERRAIN_DISTRIBUTION)
+        rng.shuffle(terrains)
+        hexes = build_hex_specs(coords, terrains, list(NUMBER_TOKENS))
+        score = score_layout(hexes)
+        if score < best_score:
+            best_hexes = hexes
+            best_score = score
+        if score <= 20:
+            break
     return attach_topology({
         "id": "standard",
-        "name": "Standard 3-4-5-4-3 Island",
-        "hexes": build_hex_specs(coords, terrains, list(NUMBER_TOKENS)),
+        "name": "Balanced Standard 3-4-5-4-3 Island",
+        "hexes": best_hexes or build_hex_specs(coords, list(TERRAIN_DISTRIBUTION), list(NUMBER_TOKENS)),
         "ports": build_ports(rng),
     })
 
 
 def build_hex_specs(coords: list[tuple[int, int]], terrains: list[str], numbers: list[int]) -> list[dict[str, Any]]:
     result = []
-    number_index = 0
     for index, ((q, r), terrain) in enumerate(zip(coords, terrains)):
-        number = None
-        if terrain != "desert":
-            number = numbers[number_index]
-            number_index += 1
         x, y = axial_to_pixel(q, r)
         result.append({
             "id": f"h{index}",
@@ -66,21 +61,69 @@ def build_hex_specs(coords: list[tuple[int, int]], terrains: list[str], numbers:
             "x": x,
             "y": y,
             "terrain": terrain,
-            "number": number,
+            "number": None,
         })
+    assign_numbers_in_spiral(result, numbers)
     return result
 
 
-def has_adjacent_red_numbers(hexes: list[dict[str, Any]]) -> bool:
+def assign_numbers_in_spiral(hexes: list[dict[str, Any]], numbers: list[int]) -> None:
     by_coord = {(hex_tile["q"], hex_tile["r"]): hex_tile for hex_tile in hexes}
-    for hex_tile in hexes:
-        if hex_tile.get("number") not in {6, 8}:
+    number_index = 0
+    for coord in spiral_coords(radius=2):
+        hex_tile = by_coord[coord]
+        if hex_tile["terrain"] == "desert":
             continue
+        hex_tile["number"] = numbers[number_index]
+        number_index += 1
+
+
+def spiral_coords(radius: int) -> list[tuple[int, int]]:
+    if radius != 2:
+        raise ValueError("Only the standard radius-2 island is supported right now.")
+    return [
+        (0, -2), (1, -2), (2, -2), (2, -1), (2, 0), (1, 1),
+        (0, 2), (-1, 2), (-2, 2), (-2, 1), (-2, 0), (-1, -1),
+        (0, -1), (1, -1), (1, 0), (0, 1), (-1, 1), (-1, 0),
+        (0, 0),
+    ]
+
+
+def score_layout(hexes: list[dict[str, Any]]) -> int:
+    red_adjacencies = count_adjacent_pairs(hexes, lambda a, b: a.get("number") in {6, 8} and b.get("number") in {6, 8})
+    same_resource_adjacencies = count_adjacent_pairs(
+        hexes,
+        lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] != "desert",
+    )
+    red_terrains = [hex_tile["terrain"] for hex_tile in hexes if hex_tile.get("number") in {6, 8}]
+    duplicate_red_resources = len(red_terrains) - len(set(red_terrains))
+    return red_adjacencies * 10000 + same_resource_adjacencies * 100 + duplicate_red_resources * 10
+
+
+def count_adjacent_pairs(hexes: list[dict[str, Any]], predicate) -> int:
+    by_coord = {(hex_tile["q"], hex_tile["r"]): hex_tile for hex_tile in hexes}
+    count = 0
+    seen = set()
+    for hex_tile in hexes:
         for dq, dr in HEX_DIRECTIONS:
             neighbor = by_coord.get((hex_tile["q"] + dq, hex_tile["r"] + dr))
-            if neighbor and neighbor.get("number") in {6, 8}:
-                return True
-    return False
+            if not neighbor:
+                continue
+            key = tuple(sorted((hex_tile["id"], neighbor["id"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            if predicate(hex_tile, neighbor):
+                count += 1
+    return count
+
+
+def has_adjacent_red_numbers(hexes: list[dict[str, Any]]) -> bool:
+    return count_adjacent_pairs(hexes, lambda a, b: a.get("number") in {6, 8} and b.get("number") in {6, 8}) > 0
+
+
+def has_adjacent_same_resources(hexes: list[dict[str, Any]]) -> bool:
+    return count_adjacent_pairs(hexes, lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] != "desert") > 0
 
 
 def axial_to_pixel(q: int, r: int, size: float = 1.0) -> tuple[float, float]:

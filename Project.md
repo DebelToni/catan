@@ -9,7 +9,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Local Flask + Socket.IO server with in-memory rooms.
 - `run.py` starts the web server and, unless disabled, starts `cloudflared tunnel --url http://localhost:<port>` and prints the public trycloudflare URL when Cloudflare emits it.
 - Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, dice strip animation over the sea, player list, bottom hand/action dock, click-card trades, chat, and action log.
-- Standard 19-hex base island with randomized resources/numbers from a seed and no adjacent 6/8 numbers.
+- Standard 19-hex base island with seeded balanced terrain placement, official number-token spiral order, no adjacent 6/8 numbers, and no adjacent same-resource terrain tiles.
 - Generic board topology generation: hexes, vertices, edges, ports, adjacency, robber tile, roads, settlements, and cities are derived from the map config so custom maps can be added later.
 - Generated placeholder PNG assets in `app/static/assets/`. Existing assets are loaded directly by the browser, so redrawing a PNG and restarting/refreshing uses the new art.
 - Roads, settlements, and cities are rendered programmatically in the player's selected color, so they do not use PNG assets.
@@ -27,7 +27,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 
 ## Base rules implemented
 - Standard terrain distribution: 4 forest/lumber, 4 pasture/wool, 4 field/grain, 3 hill/brick, 3 mountain/ore, 1 desert.
-- Standard number tokens: 2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12. Desert has no number.
+- Standard number tokens use the official letter order 5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11 in a spiral, skipping the desert. Desert has no number.
 - Robber starts on the desert and blocks production on its tile.
 - Setup placement uses snake order: first player to last player, then last player to first player.
 - Each setup placement is settlement then adjacent road.
