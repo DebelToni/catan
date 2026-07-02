@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catan LAN</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body data-game-id="{{ game_id }}">
+  <div id="toast"></div>
+
+  <section id="home" class="home">
+    <div class="hero card">
+      <div>
+        <p class="eyebrow">LAN + Cloudflare friendly</p>
+        <h1>Catan with friends</h1>
+        <p class="subtle">Original local web implementation for private games. Create a room, copy the link printed by the server, and play in the browser.</p>
+      </div>
+      <img src="/static/assets/terrain_field.png" alt="field placeholder" class="hero-art">
+    </div>
+
+    <div class="home-grid">
+      <form id="createForm" class="card form-card">
+        <h2>Create game</h2>
+        <label>Name <input name="name" maxlength="24" placeholder="Anton"></label>
+        <div>
+          <span class="label-text">Color</span>
+          <div id="createColors" class="color-grid"></div>
+        </div>
+        <div class="settings-grid">
+          <label>Points to win <input name="points_to_win" type="number" min="1" max="30" value="10"></label>
+          <label>Max hand limit <input name="hand_limit" type="number" min="1" max="30" value="7"></label>
+          <label>Turn timer seconds <input name="turn_timer_seconds" type="number" min="0" max="600" value="0"></label>
+          <label>Map seed <input name="map_seed" placeholder="blank = random"></label>
+        </div>
+        <label class="check"><input name="random_map" type="checkbox" checked> Randomize standard map</label>
+        <label class="check"><input name="friendly_robber" type="checkbox"> Friendly robber</label>
+        <button class="primary" type="submit">Create room</button>
+      </form>
+
+      <form id="joinForm" class="card form-card">
+        <h2>Join game</h2>
+        <label>Game code <input name="game_id" maxlength="8" placeholder="ABCDE"></label>
+        <label>Name <input name="name" maxlength="24" placeholder="Friend"></label>
+        <div>
+          <span class="label-text">Color</span>
+          <div id="joinColors" class="color-grid"></div>
+        </div>
+        <button class="primary" type="submit">Join room</button>
+        <div id="openGames" class="open-games"></div>
+      </form>
+    </div>
+  </section>
+
+  <main id="game" class="game hidden">
+    <header class="topbar">
+      <div>
+        <strong id="gameTitle">Game</strong>
+        <span id="phaseText" class="pill"></span>
+      </div>
+      <div id="diceStrip" class="dice-strip"></div>
+      <div class="top-actions">
+        <button id="copyLinkBtn">Copy link</button>
+        <button id="fitBoardBtn">Fit board</button>
+      </div>
+    </header>
+
+    <div class="play-layout">
+      <section class="board-panel">
+        <canvas id="boardCanvas"></canvas>
+        <div id="canvasHint" class="canvas-hint">Drag to pan · wheel/pinch to zoom · click after choosing an action</div>
+      </section>
+
+      <aside class="side-panel">
+        <section class="card compact">
+          <h3>Players</h3>
+          <div id="playersList"></div>
+        </section>
+
+        <section class="card compact">
+          <h3>Turn</h3>
+          <div id="turnInfo"></div>
+          <div id="mainControls" class="button-grid"></div>
+          <div id="actionHelp" class="subtle"></div>
+        </section>
+
+        <section id="resourcesPanel" class="card compact">
+          <h3>Your hand</h3>
+          <div id="resourcesList" class="resource-list"></div>
+          <div id="devCards" class="dev-list"></div>
+        </section>
+
+        <section id="robberPanel" class="card compact hidden">
+          <h3>Robber</h3>
+          <p class="subtle">Click a tile, then choose who to steal from.</p>
+          <div id="robberVictims"></div>
+        </section>
+
+        <section id="discardPanel" class="card compact hidden">
+          <h3>Discard</h3>
+          <p id="discardNeed" class="subtle"></p>
+          <div id="discardInputs" class="resource-inputs"></div>
+          <button id="discardBtn" class="primary">Discard</button>
+        </section>
+
+        <section class="card compact">
+          <h3>Bank trade</h3>
+          <div class="trade-row">
+            <select id="bankGive"></select>
+            <span>→</span>
+            <select id="bankReceive"></select>
+            <button id="bankTradeBtn">Trade</button>
+          </div>
+          <div id="bankRates" class="subtle"></div>
+        </section>
+
+        <section class="card compact">
+          <h3>Player trades</h3>
+          <details>
+            <summary>Create offer</summary>
+            <p class="subtle">Offer is from the active player to anyone.</p>
+            <div class="trade-columns">
+              <div><strong>You give</strong><div id="offerGive" class="resource-inputs mini"></div></div>
+              <div><strong>You want</strong><div id="offerReceive" class="resource-inputs mini"></div></div>
+            </div>
+            <button id="offerBtn">Post offer</button>
+          </details>
+          <div id="offersList"></div>
+        </section>
+
+        <section class="card compact log-card">
+          <h3>Log</h3>
+          <div id="logList"></div>
+          <div class="chat-row"><input id="chatInput" maxlength="300" placeholder="chat"><button id="chatBtn">Send</button></div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

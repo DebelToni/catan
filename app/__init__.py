@@ -1,0 +1,1 @@
+"""Catan LAN application package."""
