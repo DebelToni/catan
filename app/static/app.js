@@ -19,6 +19,10 @@ let playerId = null;
 let selectedAction = null;
 let pendingRobberHexId = null;
 let lastRollKey = "";
+let bankSelection = {give: "lumber", receive: "grain"};
+let offerGiveSelection = emptyResourceSelection();
+let offerReceiveSelection = emptyResourceSelection();
+let discardSelection = emptyResourceSelection();
 let profile = readJson("catanProfile", {name: "", color: "red"});
 let savedPlayers = readJson("catanPlayers", {});
 let createColor = profile.color || "red";
@@ -167,21 +171,20 @@ function setupControls() {
     toast("Copied share link.");
   });
   el("fitBoardBtn").addEventListener("click", () => { fitBoard(true); drawBoard(); });
-  el("bankTradeBtn").addEventListener("click", () => emit("bank_trade", {give: el("bankGive").value, receive: el("bankReceive").value}));
-  el("offerBtn").addEventListener("click", () => emit("create_trade_offer", {give: readInputs("offerGive"), receive: readInputs("offerReceive")}));
-  el("discardBtn").addEventListener("click", () => emit("discard", {resources: readInputs("discard")}));
+  el("bankTradeBtn").addEventListener("click", () => emit("bank_trade", {give: bankSelection.give, receive: bankSelection.receive}));
+  el("offerBtn").addEventListener("click", () => {
+    emit("create_trade_offer", {give: offerGiveSelection, receive: offerReceiveSelection});
+    offerGiveSelection = emptyResourceSelection();
+    offerReceiveSelection = emptyResourceSelection();
+    renderTrades();
+  });
+  el("discardBtn").addEventListener("click", () => {
+    emit("discard", {resources: discardSelection});
+    discardSelection = emptyResourceSelection();
+    renderDiscard();
+  });
   el("chatBtn").addEventListener("click", sendChat);
   el("chatInput").addEventListener("keydown", (event) => { if (event.key === "Enter") sendChat(); });
-  fillResourceSelects();
-  renderInputGrid(el("offerGive"), "offerGive");
-  renderInputGrid(el("offerReceive"), "offerReceive");
-}
-
-function fillResourceSelects() {
-  for (const select of [el("bankGive"), el("bankReceive")]) {
-    select.innerHTML = RESOURCE_TYPES.map((resource) => `<option value="${resource}">${RESOURCE_LABELS[resource]}</option>`).join("");
-  }
-  el("bankReceive").value = "grain";
 }
 
 function sendChat() {
@@ -301,9 +304,7 @@ function renderTurn() {
 
 function renderHand() {
   const resources = state.you?.resources || {};
-  el("resourcesList").innerHTML = RESOURCE_TYPES.map((resource) => `
-    <div class="resource-chip"><span><img src="/static/assets/resource_${resource}.png" alt=""> ${RESOURCE_LABELS[resource]}</span><strong>${resources[resource] || 0}</strong></div>
-  `).join("");
+  el("resourcesList").innerHTML = RESOURCE_TYPES.map((resource) => renderCardStack(resource, resources[resource] || 0)).join("");
   const cards = state.you?.dev_cards || [];
   el("devCards").innerHTML = cards.length ? cards.map((card) => renderDevCard(card)).join("") : `<p class="subtle">No development cards.</p>`;
   el("devCards").querySelectorAll("[data-play-dev]").forEach((button) => {
@@ -311,10 +312,20 @@ function renderHand() {
   });
 }
 
+function renderCardStack(resource, count) {
+  const visible = Math.max(1, Math.min(count || 1, 4));
+  const cards = Array.from({length: visible}, (_, index) => {
+    const left = index * 18;
+    return `<img class="${count ? "" : "empty-stack"}" src="/static/assets/resource_${resource}.png" alt="${RESOURCE_LABELS[resource]}" style="left:${left}px;z-index:${index}">`;
+  }).join("");
+  return `<div class="card-stack" title="${RESOURCE_LABELS[resource]}: ${count}">${cards}<span class="card-count">${count}</span></div>`;
+}
+
 function renderDevCard(card) {
   const playable = state.current_player_id === playerId && state.turn_stage === "main" && card.type !== "victory_point" && card.bought_turn !== state.turn_number;
   return `<div class="dev-card">
-    <span><img src="/static/assets/dev_${card.type}.png" alt=""> ${DEV_LABELS[card.type] || card.type}</span>
+    <img src="/static/assets/dev_${card.type}.png" alt="${DEV_LABELS[card.type] || card.type}">
+    <span>${DEV_LABELS[card.type] || card.type}</span>
     ${card.type === "victory_point" ? "<small>auto VP</small>" : `<button data-play-dev="${card.id}" data-dev-type="${card.type}" ${playable ? "" : "disabled"}>Play</button>`}
   </div>`;
 }
@@ -341,9 +352,21 @@ function playDev(cardId, type) {
 function renderDiscard() {
   const required = state.pending_discards?.[playerId] || 0;
   el("discardPanel").classList.toggle("hidden", !required);
-  if (!required) return;
-  el("discardNeed").textContent = `Discard exactly ${required} cards.`;
-  renderInputGrid(el("discardInputs"), "discard", state.you?.resources || {});
+  if (!required) {
+    discardSelection = emptyResourceSelection();
+    return;
+  }
+  const selected = resourceTotal(discardSelection);
+  el("discardNeed").textContent = `Discard exactly ${required} cards. Selected ${selected}/${required}.`;
+  renderResourcePicker(el("discardInputs"), {
+    selected: discardSelection,
+    max: state.you?.resources || {},
+    onClick: (resource) => {
+      if (selected < required && discardSelection[resource] < (state.you?.resources?.[resource] || 0)) discardSelection[resource] += 1;
+      renderDiscard();
+    },
+    onAltClick: (resource) => { discardSelection[resource] = Math.max(0, discardSelection[resource] - 1); renderDiscard(); },
+  });
 }
 
 function renderRobberPanel() {
@@ -375,35 +398,71 @@ function renderRobberVictims() {
 
 function renderTrades() {
   const rates = state.you?.bank_rates || {};
+  renderResourcePicker(el("bankGive"), {
+    selectedResource: bankSelection.give,
+    max: state.you?.resources || {},
+    countFor: (resource) => rates[resource] || 4,
+    onClick: (resource) => { bankSelection.give = resource; renderTrades(); },
+  });
+  renderResourcePicker(el("bankReceive"), {
+    selectedResource: bankSelection.receive,
+    onClick: (resource) => { bankSelection.receive = resource; renderTrades(); },
+  });
   el("bankRates").textContent = RESOURCE_TYPES.map((resource) => `${RESOURCE_LABELS[resource]} ${rates[resource] || 4}:1`).join(" · ");
+
+  renderResourcePicker(el("offerGive"), {
+    selected: offerGiveSelection,
+    max: state.you?.resources || {},
+    onClick: (resource) => { offerGiveSelection[resource] += 1; renderTrades(); },
+    onAltClick: (resource) => { offerGiveSelection[resource] = Math.max(0, offerGiveSelection[resource] - 1); renderTrades(); },
+  });
+  renderResourcePicker(el("offerReceive"), {
+    selected: offerReceiveSelection,
+    onClick: (resource) => { offerReceiveSelection[resource] += 1; renderTrades(); },
+    onAltClick: (resource) => { offerReceiveSelection[resource] = Math.max(0, offerReceiveSelection[resource] - 1); renderTrades(); },
+  });
+
   el("offersList").innerHTML = (state.trade_offers || []).map((offer) => {
     const proposer = state.players.find((player) => player.id === offer.from_player_id);
     return `<div class="offer-card">
       <span><strong>${escapeHtml(proposer?.name || "Player")}</strong>: gives ${formatResources(offer.give)} for ${formatResources(offer.receive)}</span>
       ${offer.from_player_id === playerId ? `<button data-cancel-offer="${offer.id}">Cancel</button>` : `<button data-accept-offer="${offer.id}">Accept</button>`}
     </div>`;
-  }).join("");
+  }).join("") || `<p class="subtle">No offers.</p>`;
   el("offersList").querySelectorAll("[data-accept-offer]").forEach((button) => button.addEventListener("click", () => emit("accept_trade_offer", {offer_id: button.dataset.acceptOffer})));
   el("offersList").querySelectorAll("[data-cancel-offer]").forEach((button) => button.addEventListener("click", () => emit("cancel_trade_offer", {offer_id: button.dataset.cancelOffer})));
 }
 
+function renderResourcePicker(container, options) {
+  const selected = options.selected || emptyResourceSelection();
+  const max = options.max || null;
+  const selectedResource = options.selectedResource || null;
+  container.innerHTML = RESOURCE_TYPES.map((resource) => {
+    const selectedCount = selected[resource] || 0;
+    const maxCount = max ? (max[resource] || 0) : Infinity;
+    const disabled = max && maxCount <= 0 && selectedCount === 0;
+    const shownCount = options.countFor ? options.countFor(resource) : selectedCount;
+    return `<button type="button" class="pick-card ${selectedResource === resource || selectedCount ? "selected" : ""}" data-pick-resource="${resource}" ${disabled ? "disabled" : ""} title="${RESOURCE_LABELS[resource]}">
+      <img src="/static/assets/resource_${resource}.png" alt="${RESOURCE_LABELS[resource]}">
+      ${shownCount ? `<span class="mini-count">${shownCount}</span>` : ""}
+    </button>`;
+  }).join("");
+  container.querySelectorAll("[data-pick-resource]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const resource = button.dataset.pickResource;
+      if (options.max && !options.selectedResource && (options.selected?.[resource] || 0) >= (options.max?.[resource] || 0)) return;
+      options.onClick?.(resource);
+    });
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      options.onAltClick?.(button.dataset.pickResource);
+    });
+  });
+}
+
 function renderLog() {
   const logLines = (state.chat || []).map((item) => `${item.name}: ${item.text}`).concat(state.log || []);
-  el("logList").innerHTML = logLines.slice(-80).map((line) => `<div>${escapeHtml(line)}</div>`).join("");
-}
-
-function renderInputGrid(container, prefix, maxValues = null) {
-  container.innerHTML = RESOURCE_TYPES.map((resource) => `
-    <label>${RESOURCE_LABELS[resource].slice(0, 3)}<input data-prefix="${prefix}" data-resource="${resource}" type="number" min="0" ${maxValues ? `max="${maxValues[resource] || 0}"` : ""} value="0"></label>
-  `).join("");
-}
-
-function readInputs(prefix) {
-  const result = {};
-  document.querySelectorAll(`[data-prefix="${prefix}"]`).forEach((input) => {
-    result[input.dataset.resource] = Math.max(0, parseInt(input.value || "0", 10));
-  });
-  return result;
+  el("logList").innerHTML = logLines.slice(-20).map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 }
 
 function setupCanvas() {
@@ -482,13 +541,7 @@ function drawBoard() {
   const rect = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, rect.width, rect.height);
   if (!state?.board) return;
-  const sea = assets.terrain_sea;
-  if (sea.complete) {
-    const pattern = ctx.createPattern(sea, "repeat");
-    ctx.fillStyle = pattern || "#16384a";
-  } else {
-    ctx.fillStyle = "#16384a";
-  }
+  ctx.fillStyle = "#c9f3f4";
   ctx.fillRect(0, 0, rect.width, rect.height);
 
   for (const hex of state.board.hexes) drawHex(hex);
@@ -520,7 +573,7 @@ function drawHex(hex) {
 }
 
 function drawNumberToken(hex, center) {
-  const radius = clamp(view.scale * 0.25, 15, 28);
+  const radius = clamp(view.scale * 0.375, 22, 42);
   const token = assets.number_token;
   if (token.complete) ctx.drawImage(token, center.x - radius, center.y - radius, radius * 2, radius * 2);
   else {
@@ -631,7 +684,7 @@ function drawRobber() {
   const hex = state.board.hexes.find((item) => item.id === state.robber_hex_id);
   if (!hex) return;
   const p = worldToScreen(hex.x, hex.y);
-  const size = clamp(view.scale * 0.45, 28, 52);
+  const size = clamp(view.scale * 0.9, 56, 104);
   const image = assets.icon_robber;
   if (image?.complete) ctx.drawImage(image, p.x - size / 2, p.y - size * 0.88, size, size);
   else {
@@ -786,6 +839,8 @@ function dicePairHtml(pair, active = false) {
 }
 
 function randDie() { return Math.floor(Math.random() * 6) + 1; }
+function emptyResourceSelection() { return Object.fromEntries(RESOURCE_TYPES.map((resource) => [resource, 0])); }
+function resourceTotal(resources) { return RESOURCE_TYPES.reduce((total, resource) => total + (resources?.[resource] || 0), 0); }
 function formatResources(resources) { return RESOURCE_TYPES.filter((resource) => resources[resource]).map((resource) => `${resources[resource]} ${RESOURCE_LABELS[resource]}`).join(", ") || "nothing"; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[char])); }
 function toast(message) {

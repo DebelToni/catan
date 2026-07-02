@@ -8,7 +8,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 ## Current build
 - Local Flask + Socket.IO server with in-memory rooms.
 - `run.py` starts the web server and, unless disabled, starts `cloudflared tunnel --url http://localhost:<port>` and prints the public trycloudflare URL when Cloudflare emits it.
-- Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, dice strip animation, player list, hand panel, trades, chat, and action log.
+- Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, dice strip animation over the sea, player list, bottom hand/action dock, click-card trades, chat, and action log.
 - Standard 19-hex base island with randomized resources/numbers from a seed and no adjacent 6/8 numbers.
 - Generic board topology generation: hexes, vertices, edges, ports, adjacency, robber tile, roads, settlements, and cities are derived from the map config so custom maps can be added later.
 - Generated placeholder PNG assets in `app/static/assets/`. Existing assets are loaded directly by the browser, so redrawing a PNG and restarting/refreshing uses the new art.
@@ -62,8 +62,8 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Hand panel: private resource counts and private development cards with Play buttons when legal.
 - Robber panel: appears when the player must move robber; click a tile, then choose victim or move only.
 - Discard panel: appears only for players required to discard.
-- Bank trade panel: give resource, receive resource, Trade button, owned rates.
-- Player trades panel: create offer, accept offer, cancel own offer.
+- Bank trade panel: click a resource card to give, click a resource card to receive, Trade button, owned rates.
+- Player trades panel: click resource cards to build an offer, accept offer, cancel own offer.
 - Log/chat panel: game log, chat input, Send.
 
 ## Asset files

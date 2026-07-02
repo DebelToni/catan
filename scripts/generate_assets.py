@@ -16,7 +16,7 @@ TERRAINS = {
     "hill": (188, 108, 37),
     "mountain": (141, 153, 174),
     "desert": (212, 163, 115),
-    "sea": (38, 100, 128),
+    "sea": (201, 243, 244),
 }
 RESOURCES = {
     "lumber": (45, 106, 79),
@@ -77,6 +77,8 @@ def hex_points(cx: int, cy: int, radius: int) -> list[tuple[float, float]]:
 
 def terrain_asset(name: str, color: tuple[int, int, int]) -> Image.Image:
     image = Image.new("RGBA", (512, 512), color + (255,))
+    if name == "sea":
+        return image
     draw = ImageDraw.Draw(image)
     for i in range(0, 650, 32):
         shade = tuple(max(0, min(255, channel + (18 if (i // 32) % 2 else -12))) for channel in color)
