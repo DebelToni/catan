@@ -553,14 +553,20 @@ function drawPorts() {
     const length = Math.hypot(mid.x, mid.y) || 1;
     const out = {x: mid.x / length, y: mid.y / length};
     const start = worldToScreen(mid.x, mid.y);
-    const end = worldToScreen(mid.x + out.x * 0.55, mid.y + out.y * 0.55);
+    const end = worldToScreen(mid.x + out.x * 0.62, mid.y + out.y * 0.62);
     ctx.strokeStyle = "rgba(255,255,255,.55)";
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
-    ctx.fillStyle = "rgba(7,13,18,.78)";
-    roundRect(end.x - 28, end.y - 13, 56, 26, 9); ctx.fill();
-    ctx.fillStyle = "#f4f1de";
-    ctx.fillText(port.kind === "3:1" ? "3:1" : `2:${shortResource(port.kind)}`, end.x, end.y);
+    const size = clamp(view.scale * 0.42, 36, 62);
+    const image = assets[portAssetName(port.kind)];
+    if (image?.complete && image.naturalWidth) {
+      drawContainedImage(image, end.x - size / 2, end.y - size / 2, size, size);
+    } else {
+      ctx.fillStyle = "rgba(7,13,18,.78)";
+      roundRect(end.x - size / 2, end.y - size / 2, size, size, 9); ctx.fill();
+      ctx.fillStyle = "#f4f1de";
+      ctx.fillText(port.kind === "3:1" ? "3:1" : `2:${shortResource(port.kind)}`, end.x, end.y);
+    }
   }
 }
 
@@ -748,8 +754,15 @@ function worldToScreenVertex(id) { const vertex = vertexById(id); return worldTo
 function worldToScreen(x, y) { return {x: view.x + x * view.scale, y: view.y + y * view.scale}; }
 function screenToWorld(x, y) { return {x: (x - view.x) / view.scale, y: (y - view.y) / view.scale}; }
 function pathPolygon(points) { ctx.beginPath(); points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath(); }
+function drawContainedImage(image, x, y, width, height) {
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
 function roundRect(x, y, width, height, radius) { ctx.beginPath(); ctx.roundRect(x, y, width, height, radius); }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function portAssetName(kind) { return kind === "3:1" ? "port_3to1" : `port_${kind}`; }
 function shortResource(resource) { return {lumber: "Lu", brick: "Br", wool: "Wo", grain: "Gr", ore: "Or"}[resource] || resource.slice(0, 2); }
 
 function animateDice(roll) {

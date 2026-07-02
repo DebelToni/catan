@@ -199,9 +199,10 @@ def token_asset() -> Image.Image:
 def port_asset(kind: str) -> Image.Image:
     image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((24, 58, 232, 198), radius=24, fill=(20, 38, 48, 240), outline=(255, 255, 255, 150), width=5)
+    draw.rounded_rectangle((18, 18, 238, 238), radius=22, fill=(20, 38, 48, 245), outline=(255, 255, 255, 170), width=7)
+    draw.rounded_rectangle((38, 38, 218, 218), radius=14, fill=(32, 65, 80, 230), outline=(244, 162, 97, 135), width=3)
     label = "3:1" if kind == "3to1" else f"2:1\n{kind.upper()}"
-    add_label(draw, (32, 68, 224, 188), label, 34)
+    add_label(draw, (44, 52, 212, 204), label, 33)
     return image
 
 

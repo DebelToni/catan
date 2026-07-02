@@ -146,6 +146,11 @@ def on_cancel_trade_offer(data):
     with_game_player(data, action)
 
 
+@socketio.on("end_turn")
+def on_end_turn(data):
+    with_game_player(data, lambda game, player_id: game.end_turn(player_id))
+
+
 @socketio.on("chat")
 def on_chat(data):
     def action(game, player_id):

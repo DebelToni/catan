@@ -75,7 +75,7 @@ Development cards: `dev_knight.png`, `dev_road_building.png`, `dev_year_of_plent
 
 Board/UI pieces: `icon_robber.png`, `number_token.png`, `largest_army.png`, `longest_road.png`. Roads, settlements, and cities are canvas shapes colored per player.
 
-Ports: `port_3to1.png`, `port_lumber.png`, `port_brick.png`, `port_wool.png`, `port_grain.png`, `port_ore.png`.
+Ports: square 256x256 art files rendered as square markers on the board: `port_3to1.png`, `port_lumber.png`, `port_brick.png`, `port_wool.png`, `port_grain.png`, `port_ore.png`.
 
 Dice: `dice_1.png`, `dice_2.png`, `dice_3.png`, `dice_4.png`, `dice_5.png`, `dice_6.png`.
 
