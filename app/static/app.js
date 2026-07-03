@@ -2,9 +2,9 @@ const socket = io();
 const RESOURCE_TYPES = ["lumber", "brick", "wool", "grain", "ore"];
 const RESOURCE_LABELS = {lumber: "Lumber", brick: "Brick", wool: "Wool", grain: "Grain", ore: "Ore"};
 const DEV_LABELS = {knight: "Knight", road_building: "Road Building", year_of_plenty: "Year of Plenty", monopoly: "Monopoly", victory_point: "Victory Point"};
-const TERRAIN_COLORS = {forest: "#2d6a4f", pasture: "#90be6d", field: "#e9c46a", hill: "#bc6c25", mountain: "#8d99ae", desert: "#d4a373", gold: "#f5b930", sea: "#c9f3f4"};
+const TERRAIN_COLORS = {forest: "#2d6a4f", pasture: "#90be6d", field: "#e9c46a", hill: "#bc6c25", mountain: "#8d99ae", desert: "#d4a373", gold: "#bcd236", sea: "#c9f3f4", fog: "#d7dad2"};
 const ASSET_NAMES = [
-  "terrain_forest", "terrain_pasture", "terrain_field", "terrain_hill", "terrain_mountain", "terrain_desert", "terrain_gold", "terrain_sea",
+  "terrain_forest", "terrain_pasture", "terrain_field", "terrain_hill", "terrain_mountain", "terrain_desert", "terrain_gold", "terrain_fog", "terrain_sea",
   "resource_lumber", "resource_brick", "resource_wool", "resource_grain", "resource_ore",
   "icon_robber", "number_token",
   "dev_knight", "dev_road_building", "dev_year_of_plenty", "dev_monopoly", "dev_victory_point", "card_back_development",
@@ -17,6 +17,9 @@ let mapPresets = [
   {id: "standard", name: "Balanced Standard"},
   {id: "crescent", name: "Crescent Bay"},
   {id: "seafarers_gold", name: "Seafarers Gold Isles"},
+  {id: "standard_56", name: "Balanced Standard 5-6"},
+  {id: "crescent_56", name: "Crescent Bay 5-6"},
+  {id: "seafarers_gold_56", name: "Seafarers Gold Isles 5-6"},
 ];
 let state = null;
 let gameId = (document.body.dataset.gameId || new URLSearchParams(location.search).get("game") || "").toUpperCase();
@@ -301,20 +304,21 @@ function renderTurn() {
   if (state.turn_stage === "must_roll") {
     selectedAction = null;
     el("actionHelp").textContent = "Click the dice on the water to roll. Rolling 7 triggers discards and robber movement.";
-  } else if (state.turn_stage === "main") {
+  } else if (state.turn_stage === "main" || state.turn_stage === "paired_build") {
     addActionControl(state.board?.uses_ships ? "Road / Ship" : "Road", "road");
     addActionControl("Settlement", "settlement");
     addActionControl("City", "city");
     addControl("Buy dev", () => emit("buy_dev_card"));
     addControl("End turn", () => emit("end_turn"), "primary");
-    el("actionHelp").textContent = selectedAction ? `Click the board to place a ${selectedAction}.` : "Build, trade, buy/play development cards, then end turn.";
+    const tradeText = state.turn_stage === "paired_build" ? "Bank trade/build only: no player trades." : "Build, trade, buy/play development cards, then end turn.";
+    el("actionHelp").textContent = selectedAction ? `Click the board to place a ${selectedAction}.` : tradeText;
   } else if (state.turn_stage === "road_building") {
     selectedAction = "road";
     addActionControl(`Free road (${state.free_roads_remaining})`, "road");
     el("actionHelp").textContent = "Road Building: click two empty edges connected to your network.";
   } else if (state.turn_stage === "move_robber") {
     selectedAction = "robber";
-    el("actionHelp").textContent = "Click a land tile for the robber.";
+    el("actionHelp").textContent = state.board?.uses_pirate ? "Click a land tile for the robber or a sea tile for the pirate." : "Click a land tile for the robber.";
   } else if (state.turn_stage === "gold_choice") {
     selectedAction = null;
     el("actionHelp").textContent = "Players on gold tiles choose their produced resources.";
@@ -441,7 +445,7 @@ function renderRobberVictims() {
     container.innerHTML = `<p class="subtle">No tile selected yet.</p>`;
     return;
   }
-  const victims = playersOnHex(pendingRobberHexId).filter((id) => id !== playerId && (state.players.find((p) => p.id === id)?.resource_count || 0) > 0);
+  const victims = playersNearRobberHex(pendingRobberHexId).filter((id) => id !== playerId && (state.players.find((p) => p.id === id)?.resource_count || 0) > 0);
   const buttons = victims.map((id) => {
     const player = state.players.find((item) => item.id === id);
     return `<button data-rob-victim="${id}">Steal from ${escapeHtml(player?.name || "player")}</button>`;
@@ -478,6 +482,7 @@ function renderTrades() {
     onAltClick: (resource) => { offerReceiveSelection[resource] = Math.max(0, offerReceiveSelection[resource] - 1); renderTrades(); },
   });
 
+  el("offerBtn").disabled = state.turn_stage === "paired_build";
   el("offersList").innerHTML = (state.trade_offers || []).map((offer) => {
     const proposer = state.players.find((player) => player.id === offer.from_player_id);
     return `<div class="offer-card">
@@ -742,14 +747,23 @@ function drawCityShape(x, y, size) {
 }
 
 function drawRobber() {
-  const hex = state.board.hexes.find((item) => item.id === state.robber_hex_id);
+  drawRobberToken(state.robber_hex_id, false);
+  if (state.pirate_hex_id) drawRobberToken(state.pirate_hex_id, true);
+}
+
+function drawRobberToken(hexId, pirate) {
+  const hex = state.board.hexes.find((item) => item.id === hexId);
   if (!hex) return;
   const p = worldToScreen(hex.x, hex.y);
-  const size = 96;
+  const size = pirate ? 70 : 96;
   const image = assets.icon_robber;
+  if (pirate) {
+    ctx.fillStyle = "rgba(18, 86, 116, .28)";
+    ctx.beginPath(); ctx.arc(p.x, p.y - size * .32, size * .45, 0, Math.PI * 2); ctx.fill();
+  }
   if (image?.complete) ctx.drawImage(image, p.x - size / 2, p.y - size * 0.82, size, size);
   else {
-    ctx.fillStyle = "#222";
+    ctx.fillStyle = pirate ? "#125674" : "#222";
     ctx.beginPath(); ctx.arc(p.x, p.y - size * .35, size * .32, 0, Math.PI * 2); ctx.fill();
   }
 }
@@ -862,9 +876,27 @@ function playersOnHex(hexId) {
   return [...ids];
 }
 
+function playersNearRobberHex(hexId) {
+  const hex = state.board.hexes.find((item) => item.id === hexId);
+  if (hex?.terrain !== "sea") return playersOnHex(hexId);
+  const ids = new Set();
+  for (const edgeId of hex.edges || []) {
+    const owner = state.pieces.roads[edgeId];
+    if (owner) ids.add(owner);
+  }
+  for (const vertexId of hex.vertices || []) {
+    const building = state.pieces.buildings[vertexId];
+    if (building) ids.add(building.player_id);
+  }
+  return [...ids];
+}
+
 function vertexById(id) { return state.board.vertices.find((vertex) => vertex.id === id); }
 function edgeById(id) { return state.board.edges.find((edge) => edge.id === id); }
-function edgeTouchesSea(edge) { return (edge.hexes || []).some((hexId) => state.board.hexes.find((hex) => hex.id === hexId)?.terrain === "sea"); }
+function edgeTouchesSea(edge) {
+  const hexes = (edge.hexes || []).map((hexId) => state.board.hexes.find((hex) => hex.id === hexId)).filter(Boolean);
+  return hexes.some((hex) => hex.terrain === "sea") || Boolean(state.board?.uses_ships && hexes.length === 1 && hexes[0].terrain !== "sea");
+}
 function worldToScreenVertex(id) { const vertex = vertexById(id); return worldToScreen(vertex.x, vertex.y); }
 function worldToScreen(x, y) { return {x: view.x + x * view.scale, y: view.y + y * view.scale}; }
 function screenToWorld(x, y) { return {x: (x - view.x) / view.scale, y: (y - view.y) / view.scale}; }

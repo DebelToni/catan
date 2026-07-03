@@ -18,6 +18,15 @@ CRESCENT_COORDS = [
     (1, -1), (1, 0), (1, 1),
     (2, -1), (2, 0),
 ]
+EXTENDED_COORDS = [
+    (q, r)
+    for r, start, end in [(-3, 0, 2), (-2, -1, 2), (-1, -2, 2), (0, -3, 2), (1, -3, 1), (2, -3, 0), (3, -3, -1)]
+    for q in range(start, end + 1)
+]
+CRESCENT_56_COORDS = CRESCENT_COORDS + [
+    (-4, 1), (-4, 2), (-3, -1), (-3, 2), (-2, -2),
+    (-1, -3), (0, -3), (1, -2), (2, -2), (2, 1), (3, -1),
+]
 SEAFARERS_COORDS = [
     (-4, 0), (-3, -1), (-3, 0), (-3, 1), (-2, -1), (-2, 0), (-2, 1),
     (2, -1), (2, 0), (2, 1), (3, -2), (3, -1), (3, 0), (4, -2),
@@ -25,6 +34,11 @@ SEAFARERS_COORDS = [
     (-1, 2), (0, 2), (1, 1), (1, 2),
     (-1, 0), (1, -1), (0, 1),
     (-1, -2), (0, -1), (0, 0), (1, 0), (2, -2), (-2, 2),
+]
+SEAFARERS_56_COORDS = SEAFARERS_COORDS + [
+    (-5, 1), (-4, -1), (4, -3), (4, -1), (2, 3), (-1, 3),
+    (-2, -3), (-1, -4), (0, -4), (1, -4), (2, -3), (3, 1), (-3, 2),
+    (-4, 1), (3, -3), (2, 2),
 ]
 TERRAIN_DISTRIBUTION = [
     "forest", "forest", "forest", "forest",
@@ -34,6 +48,14 @@ TERRAIN_DISTRIBUTION = [
     "mountain", "mountain", "mountain",
     "desert",
 ]
+EXTENDED_TERRAIN_DISTRIBUTION = [
+    "forest", "forest", "forest", "forest", "forest", "forest",
+    "pasture", "pasture", "pasture", "pasture", "pasture", "pasture",
+    "field", "field", "field", "field", "field", "field",
+    "hill", "hill", "hill", "hill", "hill",
+    "mountain", "mountain", "mountain", "mountain", "mountain",
+    "desert", "desert",
+]
 SEAFARERS_LAND_DISTRIBUTION = [
     "forest", "forest", "forest", "forest", "forest",
     "pasture", "pasture", "pasture", "pasture", "pasture",
@@ -41,11 +63,15 @@ SEAFARERS_LAND_DISTRIBUTION = [
     "hill", "hill", "hill", "hill",
     "mountain", "mountain", "mountain",
 ]
+SEAFARERS_56_EXTRA_LAND_DISTRIBUTION = ["forest", "pasture", "field", "field", "hill", "mountain"]
 # Official letter-token order used when placing numbers in a spiral and skipping the desert.
 NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11]
 SEAFARERS_NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11, 3, 4, 5, 6, 9, 10]
+EXTENDED_NUMBER_TOKENS = [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12]
+SEAFARERS_56_NUMBER_TOKENS = EXTENDED_NUMBER_TOKENS + [3, 4, 6, 8]
 RESOURCE_PORTS = ["lumber", "brick", "wool", "grain", "ore"]
 PORT_TYPES = ["3:1", "3:1", "3:1", "3:1", *RESOURCE_PORTS]
+PORT_TYPES_56 = [*PORT_TYPES, "3:1", "wool"]
 HEX_DIRECTIONS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 SQRT3 = math.sqrt(3)
 LAND_TERRAINS = {"forest", "pasture", "field", "hill", "mountain", "desert", "gold"}
@@ -53,6 +79,9 @@ MAP_PRESETS = [
     {"id": "standard", "name": "Balanced Standard"},
     {"id": "crescent", "name": "Crescent Bay"},
     {"id": "seafarers_gold", "name": "Seafarers Gold Isles"},
+    {"id": "standard_56", "name": "Balanced Standard 5-6"},
+    {"id": "crescent_56", "name": "Crescent Bay 5-6"},
+    {"id": "seafarers_gold_56", "name": "Seafarers Gold Isles 5-6"},
 ]
 
 
@@ -72,6 +101,22 @@ def generate_map(preset: str = "standard", seed: str | int | None = None) -> dic
         )
     if preset == "seafarers_gold":
         return generate_seafarers_gold_map(seed)
+    if preset == "standard_56":
+        return generate_extended_standard_map(seed)
+    if preset == "crescent_56":
+        return generate_balanced_land_map(
+            preset="crescent_56",
+            name="Crescent Bay 5-6",
+            coords=CRESCENT_56_COORDS,
+            terrain_distribution=EXTENDED_TERRAIN_DISTRIBUTION,
+            number_tokens=EXTENDED_NUMBER_TOKENS,
+            seed=seed,
+            port_types=PORT_TYPES_56,
+            players_5_6=True,
+            shuffle_numbers=True,
+        )
+    if preset == "seafarers_gold_56":
+        return generate_seafarers_gold_map(seed, players_5_6=True)
     return generate_standard_map(seed)
 
 
@@ -87,6 +132,20 @@ def generate_standard_map(seed: str | int | None = None) -> dict[str, Any]:
     )
 
 
+def generate_extended_standard_map(seed: str | int | None = None) -> dict[str, Any]:
+    return generate_balanced_land_map(
+        preset="standard_56",
+        name="Balanced Standard 5-6 3-4-5-6-5-4-3 Island",
+        coords=EXTENDED_COORDS,
+        terrain_distribution=EXTENDED_TERRAIN_DISTRIBUTION,
+        number_tokens=EXTENDED_NUMBER_TOKENS,
+        seed=seed,
+        port_types=PORT_TYPES_56,
+        players_5_6=True,
+        shuffle_numbers=True,
+    )
+
+
 def generate_balanced_land_map(
     preset: str,
     name: str,
@@ -95,6 +154,9 @@ def generate_balanced_land_map(
     number_tokens: list[int],
     seed: str | int | None,
     number_order: list[tuple[int, int]] | None = None,
+    port_types: list[str] | None = None,
+    players_5_6: bool = False,
+    shuffle_numbers: bool = False,
 ) -> dict[str, Any]:
     rng = random.Random(seed)
     best_hexes = None
@@ -103,7 +165,10 @@ def generate_balanced_land_map(
     for _ in range(12000):
         terrains = list(terrain_distribution)
         rng.shuffle(terrains)
-        hexes = build_hex_specs(coords, terrains, number_tokens, order)
+        numbers = list(number_tokens)
+        if shuffle_numbers:
+            rng.shuffle(numbers)
+        hexes = build_hex_specs(coords, terrains, numbers, order)
         score = score_layout(hexes)
         if score < best_score:
             best_hexes = hexes
@@ -114,11 +179,12 @@ def generate_balanced_land_map(
         "id": preset,
         "name": name,
         "hexes": best_hexes or build_hex_specs(coords, list(terrain_distribution), number_tokens, order),
-        "ports": build_ports(rng),
+        "ports": build_ports(rng, port_types or PORT_TYPES),
+        "players_5_6": players_5_6,
     })
 
 
-def generate_seafarers_gold_map(seed: str | int | None = None) -> dict[str, Any]:
+def generate_seafarers_gold_map(seed: str | int | None = None, players_5_6: bool = False) -> dict[str, Any]:
     rng = random.Random(seed)
     fixed = {
         (-1, 0): "gold",
@@ -131,18 +197,45 @@ def generate_seafarers_gold_map(seed: str | int | None = None) -> dict[str, Any]
         (2, -2): "sea",
         (-2, 2): "sea",
     }
-    variable_coords = [coord for coord in SEAFARERS_COORDS if coord not in fixed]
-    order = number_order_for_shape(SEAFARERS_COORDS)
+    hidden_coords = {(-1, -3), (0, -3), (1, -3), (0, -2)}
+    coords = SEAFARERS_COORDS
+    land_distribution = list(SEAFARERS_LAND_DISTRIBUTION)
+    number_tokens = list(SEAFARERS_NUMBER_TOKENS)
+    port_types = PORT_TYPES
+    preset = "seafarers_gold"
+    name = "Seafarers Gold Isles"
+    if players_5_6:
+        fixed.update({
+            (-2, -3): "sea",
+            (-1, -4): "sea",
+            (0, -4): "sea",
+            (1, -4): "sea",
+            (2, -3): "sea",
+            (3, 1): "sea",
+            (-3, 2): "sea",
+            (-4, 1): "gold",
+            (3, -3): "gold",
+            (2, 2): "desert",
+        })
+        hidden_coords.update({(-5, 1), (-4, -1), (4, -3), (4, -1), (2, 3), (-1, 3), (-4, 1), (3, -3)})
+        coords = SEAFARERS_56_COORDS
+        land_distribution = list(SEAFARERS_LAND_DISTRIBUTION) + list(SEAFARERS_56_EXTRA_LAND_DISTRIBUTION)
+        number_tokens = list(SEAFARERS_56_NUMBER_TOKENS)
+        port_types = PORT_TYPES_56
+        preset = "seafarers_gold_56"
+        name = "Seafarers Gold Isles 5-6"
+    variable_coords = [coord for coord in coords if coord not in fixed]
+    order = number_order_for_shape(coords)
     best_hexes = None
     best_score = 10**9
-    for _ in range(14000):
-        terrains = list(SEAFARERS_LAND_DISTRIBUTION)
+    for _ in range(16000):
+        terrains = list(land_distribution)
         rng.shuffle(terrains)
-        numbers = list(SEAFARERS_NUMBER_TOKENS)
+        numbers = list(number_tokens)
         rng.shuffle(numbers)
         by_coord = dict(fixed)
         by_coord.update(dict(zip(variable_coords, terrains)))
-        hexes = build_hex_specs(SEAFARERS_COORDS, [by_coord[coord] for coord in SEAFARERS_COORDS], numbers, order)
+        hexes = build_hex_specs(coords, [by_coord[coord] for coord in coords], numbers, order, hidden_coords)
         score = score_layout(hexes)
         if score < best_score:
             best_hexes = hexes
@@ -150,12 +243,15 @@ def generate_seafarers_gold_map(seed: str | int | None = None) -> dict[str, Any]
         if score <= 20:
             break
     return attach_topology({
-        "id": "seafarers_gold",
-        "name": "Seafarers Gold Isles",
+        "id": preset,
+        "name": name,
         "hexes": best_hexes or [],
-        "ports": build_ports(rng),
+        "ports": build_ports(rng, port_types),
         "uses_ships": True,
         "uses_gold": True,
+        "uses_pirate": True,
+        "uses_fog": True,
+        "players_5_6": players_5_6,
     })
 
 
@@ -164,10 +260,12 @@ def build_hex_specs(
     terrains: list[str],
     numbers: list[int],
     number_order: list[tuple[int, int]] | None = None,
+    hidden_coords: set[tuple[int, int]] | None = None,
 ) -> list[dict[str, Any]]:
     result = []
     for index, ((q, r), terrain) in enumerate(zip(coords, terrains)):
         x, y = axial_to_pixel(q, r)
+        hidden = (hidden_coords is not None and (q, r) in hidden_coords and terrain != "sea")
         result.append({
             "id": f"h{index}",
             "q": q,
@@ -176,6 +274,8 @@ def build_hex_specs(
             "y": y,
             "terrain": terrain,
             "number": None,
+            "hidden": hidden,
+            "revealed": not hidden,
         })
     assign_numbers(result, numbers, number_order or number_order_for_shape(coords))
     return result
@@ -323,8 +423,8 @@ def attach_topology(map_config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def build_ports(rng: random.Random) -> list[dict[str, Any]]:
-    types = list(PORT_TYPES)
+def build_ports(rng: random.Random, port_types: list[str] | None = None) -> list[dict[str, Any]]:
+    types = list(port_types or PORT_TYPES)
     rng.shuffle(types)
     return [{"kind": kind, "slot": index} for index, kind in enumerate(types)]
 

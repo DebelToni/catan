@@ -53,6 +53,13 @@ DEV_DECK_TEMPLATE = (
     + ["monopoly"] * 2
     + ["victory_point"] * 5
 )
+DEV_DECK_TEMPLATE_56 = (
+    ["knight"] * 20
+    + ["road_building"] * 3
+    + ["year_of_plenty"] * 3
+    + ["monopoly"] * 3
+    + ["victory_point"] * 5
+)
 
 
 class GameError(Exception):
@@ -111,6 +118,9 @@ class Game:
     bank: dict[str, int] = field(default_factory=lambda: {resource: 19 for resource in RESOURCE_TYPES})
     dev_deck: list[dict[str, Any]] = field(default_factory=list)
     robber_hex_id: str = ""
+    pirate_hex_id: str = ""
+    paired_primary_player_id: str | None = None
+    paired_partner_player_id: str | None = None
     dice_history: list[dict[str, Any]] = field(default_factory=list)
     last_roll: dict[str, Any] | None = None
     pending_discards: dict[str, int] = field(default_factory=dict)
@@ -172,6 +182,9 @@ class Game:
         self.phase = "setup"
         self.turn_stage = "setup"
         self.current_player_id = self.setup_steps[0]["player_id"]
+        if len(ordered) >= 5:
+            self.paired_primary_player_id = ordered[0].id
+            self.paired_partner_player_id = ordered[3 % len(ordered)].id
         self.add_log("Setup started: place settlements and roads in snake order.")
 
     def roll_dice(self, player_id: str) -> dict[str, Any]:
@@ -198,7 +211,7 @@ class Game:
                 self.add_log("Players over the hand limit must discard half their cards.")
             else:
                 self.turn_stage = "move_robber"
-                self.pending_robber = {"player_id": player.id, "reason": "roll_7"}
+                self.pending_robber = {"player_id": player.id, "reason": "roll_7", "return_stage": "main"}
                 self.add_log(f"{player.name} must move the robber.")
         else:
             self.distribute_resources(total)
@@ -209,6 +222,8 @@ class Game:
         produced: list[str] = []
         for hex_tile in self.board["hexes"]:
             if hex_tile.get("number") != number or hex_tile["id"] == self.robber_hex_id:
+                continue
+            if hex_tile.get("hidden") and not hex_tile.get("revealed"):
                 continue
             resource = TERRAIN_TO_RESOURCE.get(hex_tile["terrain"])
             if not resource and hex_tile["terrain"] != "gold":
@@ -265,7 +280,7 @@ class Game:
         self.add_log(f"{player.name} discarded {required} cards.")
         if not self.pending_discards:
             self.turn_stage = "move_robber"
-            self.pending_robber = {"player_id": self.current_player_id, "reason": "roll_7"}
+            self.pending_robber = {"player_id": self.current_player_id, "reason": "roll_7", "return_stage": "main"}
             self.add_log(f"{self.active_player.name} must move the robber.")
 
     def move_robber(self, player_id: str, hex_id: str, victim_id: str | None = None) -> None:
@@ -273,12 +288,17 @@ class Game:
             raise GameError("The robber is not being moved right now.")
         if self.pending_robber["player_id"] != player_id:
             raise GameError("Only the robber mover can choose the tile.")
-        if hex_id == self.robber_hex_id:
-            raise GameError("Move the robber to a different tile.")
         hex_tile = self.hex_by_id(hex_id)
-        if hex_tile["terrain"] == "sea":
-            raise GameError("Move the robber to a land tile.")
-        adjacent_player_ids = self.players_on_hex(hex_id)
+        moving_pirate = hex_tile["terrain"] == "sea"
+        if hex_tile.get("hidden") and not hex_tile.get("revealed"):
+            raise GameError("Reveal fog tiles before moving the robber there.")
+        if moving_pirate and not self.board.get("uses_pirate"):
+            raise GameError("This map does not use the pirate.")
+        if moving_pirate and hex_id == self.pirate_hex_id:
+            raise GameError("Move the pirate to a different sea tile.")
+        if not moving_pirate and hex_id == self.robber_hex_id:
+            raise GameError("Move the robber to a different land tile.")
+        adjacent_player_ids = self.players_near_pirate(hex_id) if moving_pirate else self.players_on_hex(hex_id)
         possible_victims = [pid for pid in adjacent_player_ids if pid != player_id and resource_total(self.players[pid].resources) > 0]
         if self.settings.get("friendly_robber"):
             possible_victims = [pid for pid in possible_victims if self.victory_points(pid, public_only=True) > 2]
@@ -287,20 +307,24 @@ class Game:
                 raise GameError("That player cannot be robbed from this tile.")
         elif possible_victims:
             victim_id = random.choice(possible_victims)
-        self.robber_hex_id = hex_id
+        if moving_pirate:
+            self.pirate_hex_id = hex_id
+        else:
+            self.robber_hex_id = hex_id
         mover = self.get_player(player_id)
         if victim_id:
             victim = self.get_player(victim_id)
             stolen = steal_random_resource(victim)
             if stolen:
                 mover.resources[stolen] += 1
-                self.add_log(f"{mover.name} moved the robber to {hex_tile['terrain']} and stole from {victim.name}.")
+                self.add_log(f"{mover.name} moved the {'pirate' if moving_pirate else 'robber'} to {hex_tile['terrain']} and stole from {victim.name}.")
             else:
-                self.add_log(f"{mover.name} moved the robber to {hex_tile['terrain']}.")
+                self.add_log(f"{mover.name} moved the {'pirate' if moving_pirate else 'robber'} to {hex_tile['terrain']}.")
         else:
-            self.add_log(f"{mover.name} moved the robber to {hex_tile['terrain']}.")
+            self.add_log(f"{mover.name} moved the {'pirate' if moving_pirate else 'robber'} to {hex_tile['terrain']}.")
+        return_stage = self.pending_robber.get("return_stage", "main")
         self.pending_robber = None
-        self.turn_stage = "main"
+        self.turn_stage = return_stage
         self.check_winner(player_id)
 
     def build(self, player_id: str, build_type: str, target_id: str) -> None:
@@ -310,7 +334,7 @@ class Game:
             self.setup_build(player_id, build_type, target_id)
             return
         player = self.require_active(player_id)
-        if self.phase != "playing" or self.turn_stage not in {"main", "road_building"}:
+        if self.phase != "playing" or self.turn_stage not in {"main", "paired_build", "road_building"}:
             raise GameError("You cannot build right now.")
         if build_type != "road" and self.turn_stage == "road_building":
             raise GameError("Place the free roads before doing anything else.")
@@ -323,6 +347,7 @@ class Game:
                 pay_to_bank(self, player, cost)
             self.roads[target_id] = player_id
             self.add_log(f"{player.name} built a {'ship' if self.edge_touches_sea(target_id) else 'road'}.")
+            self.reveal_fog_from_edge(target_id, player)
             if free_road:
                 self.free_roads_remaining -= 1
                 if self.free_roads_remaining <= 0:
@@ -373,7 +398,11 @@ class Game:
             if self.setup_index >= len(self.setup_steps):
                 self.phase = "playing"
                 self.turn_stage = "must_roll"
-                self.current_player_id = self.ordered_players[0].id
+                ordered = self.ordered_players
+                self.current_player_id = ordered[0].id
+                if len(ordered) >= 5:
+                    self.paired_primary_player_id = ordered[0].id
+                    self.paired_partner_player_id = ordered[3 % len(ordered)].id
                 self.turn_number = 1
                 self.add_log(f"Setup complete. {self.active_player.name} starts.")
             else:
@@ -420,6 +449,8 @@ class Game:
             raise GameError("Unknown road edge.")
         if edge_id in self.roads:
             raise GameError("That edge already has a road.")
+        if self.edge_touches_sea(edge_id) and self.edge_adjacent_to_pirate(edge_id):
+            raise GameError("Ships may not be placed next to the pirate.")
         edge = self.board["edges_by_id"][edge_id]
         if not any(self.can_connect_road_from_vertex(player_id, vertex_id, edge_id) for vertex_id in edge["vertices"]):
             raise GameError("Roads must connect to your road network or building.")
@@ -437,8 +468,8 @@ class Game:
 
     def buy_development_card(self, player_id: str) -> None:
         player = self.require_active(player_id)
-        if self.phase != "playing" or self.turn_stage != "main":
-            raise GameError("Buy development cards during your main turn.")
+        if self.phase != "playing" or self.turn_stage not in {"main", "paired_build"}:
+            raise GameError("Buy development cards during your build turn.")
         if not self.dev_deck:
             raise GameError("The development deck is empty.")
         ensure_has(player, BUILD_COSTS["development"])
@@ -480,10 +511,11 @@ class Game:
         player.dev_cards.remove(card)
         player.dev_played_turn = self.turn_number
         if card_type == "knight":
+            return_stage = self.turn_stage
             player.knights_played += 1
             self.update_largest_army(player_id)
             self.turn_stage = "move_robber"
-            self.pending_robber = {"player_id": player_id, "reason": "knight"}
+            self.pending_robber = {"player_id": player_id, "reason": "knight", "return_stage": return_stage}
             self.add_log(f"{player.name} played a Knight.")
         elif card_type == "road_building":
             self.free_roads_remaining = 2
@@ -511,8 +543,8 @@ class Game:
 
     def bank_trade(self, player_id: str, give: str, receive: str) -> None:
         player = self.require_active(player_id)
-        if self.phase != "playing" or self.turn_stage != "main":
-            raise GameError("Trade with the bank during your main turn.")
+        if self.phase != "playing" or self.turn_stage not in {"main", "paired_build"}:
+            raise GameError("Trade with the bank during your build turn.")
         if give not in RESOURCE_TYPES or receive not in RESOURCE_TYPES or give == receive:
             raise GameError("Choose two different resources.")
         rate = self.bank_trade_rate(player_id, give)
@@ -589,10 +621,27 @@ class Game:
 
     def end_turn(self, player_id: str) -> None:
         player = self.require_active(player_id)
-        if self.phase != "playing" or self.turn_stage != "main":
+        if self.phase != "playing" or self.turn_stage not in {"main", "paired_build"}:
             raise GameError("Finish pending actions before ending your turn.")
         self.trade_offers = [offer for offer in self.trade_offers if offer["from_player_id"] != player_id]
         ordered = self.ordered_players
+        if len(ordered) >= 5 and self.turn_stage == "main" and self.paired_partner_player_id:
+            partner = self.get_player(self.paired_partner_player_id)
+            self.current_player_id = partner.id
+            self.turn_stage = "paired_build"
+            self.add_log(f"{player.name} ended turn. Paired build turn: {partner.name}.")
+            return
+        if len(ordered) >= 5 and self.turn_stage == "paired_build" and self.paired_primary_player_id:
+            primary_index = next(index for index, other in enumerate(ordered) if other.id == self.paired_primary_player_id)
+            next_primary = ordered[(primary_index + 1) % len(ordered)]
+            self.paired_primary_player_id = next_primary.id
+            self.paired_partner_player_id = ordered[(primary_index + 4) % len(ordered)].id
+            self.current_player_id = next_primary.id
+            self.turn_stage = "must_roll"
+            self.turn_number += 1
+            self.last_roll = None
+            self.add_log(f"{player.name} ended paired build. {next_primary.name} is up.")
+            return
         current_index = next(index for index, other in enumerate(ordered) if other.id == player_id)
         next_player = ordered[(current_index + 1) % len(ordered)]
         self.current_player_id = next_player.id
@@ -621,7 +670,41 @@ class Game:
 
     def edge_touches_sea(self, edge_id: str) -> bool:
         edge = self.board["edges_by_id"][edge_id]
-        return any(self.hex_by_id(hex_id)["terrain"] == "sea" for hex_id in edge["hexes"])
+        if any(self.hex_by_id(hex_id)["terrain"] == "sea" for hex_id in edge["hexes"]):
+            return True
+        return bool(self.board.get("uses_ships") and len(edge["hexes"]) == 1 and self.hex_by_id(edge["hexes"][0])["terrain"] != "sea")
+
+    def edge_adjacent_to_pirate(self, edge_id: str) -> bool:
+        return bool(self.pirate_hex_id and self.pirate_hex_id in self.board["edges_by_id"][edge_id]["hexes"])
+
+    def players_near_pirate(self, hex_id: str) -> list[str]:
+        hex_tile = self.hex_by_id(hex_id)
+        player_ids = []
+        for edge_id in hex_tile["edges"]:
+            owner = self.roads.get(edge_id)
+            if owner and owner not in player_ids:
+                player_ids.append(owner)
+        for vertex_id in hex_tile["vertices"]:
+            building = self.buildings.get(vertex_id)
+            if building and building["player_id"] not in player_ids:
+                player_ids.append(building["player_id"])
+        return player_ids
+
+    def reveal_fog_from_edge(self, edge_id: str, player: Player) -> None:
+        edge = self.board["edges_by_id"][edge_id]
+        revealed = []
+        for hex_id in edge["hexes"]:
+            hex_tile = self.hex_by_id(hex_id)
+            if not hex_tile.get("hidden") or hex_tile.get("revealed"):
+                continue
+            hex_tile["revealed"] = True
+            revealed.append(hex_tile["terrain"])
+            resource = TERRAIN_TO_RESOURCE.get(hex_tile["terrain"])
+            if resource and self.bank.get(resource, 0) > 0:
+                player.resources[resource] += 1
+                self.bank[resource] -= 1
+        if revealed:
+            self.add_log(f"{player.name} discovered fog island tile(s): {', '.join(revealed)}.")
 
     def players_on_hex(self, hex_id: str) -> list[str]:
         hex_tile = self.hex_by_id(hex_id)
@@ -753,6 +836,9 @@ class Game:
             "board": self.public_board(),
             "pieces": {"roads": deepcopy(self.roads), "buildings": deepcopy(self.buildings)},
             "robber_hex_id": self.robber_hex_id,
+            "pirate_hex_id": self.pirate_hex_id,
+            "paired_primary_player_id": self.paired_primary_player_id,
+            "paired_partner_player_id": self.paired_partner_player_id,
             "dice_history": deepcopy(self.dice_history),
             "last_roll": deepcopy(self.last_roll),
             "pending_discards": deepcopy(self.pending_discards),
@@ -772,15 +858,25 @@ class Game:
         }
 
     def public_board(self) -> dict[str, Any]:
+        public_hexes = []
+        for hex_tile in self.board["hexes"]:
+            item = deepcopy(hex_tile)
+            if item.get("hidden") and not item.get("revealed"):
+                item["terrain"] = "fog"
+                item["number"] = None
+            public_hexes.append(item)
         return {
             "id": self.board["id"],
             "name": self.board["name"],
-            "hexes": self.board["hexes"],
+            "hexes": public_hexes,
             "vertices": self.board["vertices"],
             "edges": self.board["edges"],
             "ports": self.board.get("ports", []),
             "uses_ships": self.board.get("uses_ships", False),
             "uses_gold": self.board.get("uses_gold", False),
+            "uses_pirate": self.board.get("uses_pirate", False),
+            "uses_fog": self.board.get("uses_fog", False),
+            "players_5_6": self.board.get("players_5_6", False),
         }
 
 
@@ -844,11 +940,22 @@ class GameStore:
         game_id = short_id()
         while game_id in self.games:
             game_id = short_id()
-        dev_deck = [{"id": short_id(8), "type": card_type} for card_type in DEV_DECK_TEMPLATE]
+        dev_template = DEV_DECK_TEMPLATE_56 if board.get("players_5_6") else DEV_DECK_TEMPLATE
+        dev_deck = [{"id": short_id(8), "type": card_type} for card_type in dev_template]
         random.Random(seed or game_id).shuffle(dev_deck)
-        game = Game(id=game_id, settings=merged, board=board, dev_deck=dev_deck)
+        bank_size = 24 if board.get("players_5_6") else 19
+        game = Game(
+            id=game_id,
+            settings=merged,
+            board=board,
+            dev_deck=dev_deck,
+            bank={resource: bank_size for resource in RESOURCE_TYPES},
+        )
         desert = next(hex_tile for hex_tile in board["hexes"] if hex_tile["terrain"] == "desert")
         game.robber_hex_id = desert["id"]
+        sea = next((hex_tile for hex_tile in board["hexes"] if hex_tile["terrain"] == "sea"), None)
+        if sea:
+            game.pirate_hex_id = sea["id"]
         self.games[game_id] = game
         return game
 

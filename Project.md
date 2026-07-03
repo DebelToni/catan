@@ -9,8 +9,8 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Local Flask + Socket.IO server with in-memory rooms.
 - `run.py` starts the web server and, unless disabled, starts `cloudflared tunnel --url http://localhost:<port>` and prints the public trycloudflare URL when Cloudflare emits it.
 - Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, clickable dice over the sea, player list, bottom hand/action dock, click-card trades, chat, and action log.
-- Map presets: Balanced Standard, Crescent Bay, and Seafarers Gold Isles.
-- Standard and Crescent use seeded balanced terrain placement, number-token spiral order, no adjacent 6/8 numbers, and reduced same-resource terrain clustering.
+- Map presets: Balanced Standard, Crescent Bay, Seafarers Gold Isles, and 5-6 player expanded versions of each.
+- Standard and Crescent use seeded balanced terrain placement, number-token order from the official token sets, no adjacent 6/8 numbers, and reduced same-resource terrain clustering.
 - Generic board topology generation: hexes, vertices, edges, ports, adjacency, robber tile, roads, settlements, and cities are derived from the map config so custom maps can be added later.
 - Generated placeholder PNG assets in `app/static/assets/`. Existing assets are loaded directly by the browser, so redrawing a PNG and restarting/refreshing uses the new art.
 - Roads, settlements, and cities are rendered programmatically in the player's selected color, so they do not use PNG assets.
@@ -20,12 +20,12 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Max hand limit before robber discard: default 7, configurable 1-30. Players over the limit discard half, rounded down.
 - Turn timer seconds: stored in settings; enforcement is not built yet.
 - Friendly robber: optional; when enabled, robber steals only from players above 2 public VP.
-- Map preset: Balanced Standard, Crescent Bay, or Seafarers Gold Isles.
+- Map preset: Balanced Standard, Crescent Bay, Seafarers Gold Isles, or a 5-6 player expanded version of one of those maps.
 - Random standard map: legacy toggle; map preset + seed determines current generation.
 - Map seed: blank creates a random seed; a fixed seed recreates the same map preset.
 - Bank privacy: always private. Bank card counts are never shown as a game setting or public UI.
 - Player colors: red, blue, orange, white, green, purple, black, pink, yellow, teal. Each color can be taken once.
-- Player count: room can start with 2+ joined players; the engine does not hard-code a 4-player maximum.
+- Player count: room can start with 2+ joined players; 5+ player games use the official paired-player turn structure.
 
 ## Base rules implemented
 - Standard terrain distribution: 4 forest/lumber, 4 pasture/wool, 4 field/grain, 3 hill/brick, 3 mountain/ore, 1 desert.
@@ -38,13 +38,15 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - A normal turn starts with dice roll, then main actions, then end turn.
 - Non-7 rolls produce resources for adjacent settlements/cities: settlement = 1, city = 2.
 - Gold terrain produces selectable resources: the owning player clicks resource cards to choose exactly the gold amount produced.
+- Fog island tiles start hidden on Seafarers maps; building a ship on their border reveals the tile and grants one matching resource when applicable.
+- Pirate starts on a sea tile on Seafarers maps. On a 7 or Knight, the mover may choose a land robber move or sea pirate move.
 - Rolling 7 triggers hand-limit discards, robber movement, and a random steal from an adjacent victim if chosen/available.
 - Roads cost lumber + brick and must connect to the player's network or building.
-- On sea maps, edges touching sea are ships: they cost lumber + wool and render as dashed player-colored routes.
+- On sea maps, edges touching sea or open coast are ships: they cost lumber + wool, render as dashed player-colored routes, count toward Longest Route, and cannot be placed adjacent to the pirate.
 - Settlements cost lumber + brick + wool + grain and must connect to the player's road after setup.
 - Cities cost 2 grain + 3 ore and upgrade an owned settlement.
 - Development cards cost wool + grain + ore.
-- Development deck: 14 Knights, 2 Road Building, 2 Year of Plenty, 2 Monopoly, 5 Victory Point.
+- Development deck: 14 Knights, 2 Road Building, 2 Year of Plenty, 2 Monopoly, 5 Victory Point. 5-6 maps use the expanded 34-card deck.
 - Development card limits: cannot play a non-VP card on the turn it was bought; one non-VP development card per turn.
 - Knight moves robber and counts toward Largest Army.
 - Road Building places two free roads.
@@ -62,7 +64,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Join game: game code, name input, color buttons, Join room.
 - Top bar: game code, phase/stage pill, Copy link, Fit board.
 - Player panel: color, name, host marker, connection state, public VP, own total VP, resource count, development card count, played Knights, current longest road length.
-- Turn panel: Start game, Roll dice, Road, Settlement, City, Buy dev, End turn, contextual setup/robber/free-road help.
+- Turn panel: Start game, Road, Settlement, City, Buy dev, End turn, contextual setup/robber/free-road help. Dice roll happens by clicking the two dice over the sea.
 - Hand panel: private resource counts and private development cards with Play buttons when legal.
 - Robber panel: appears when the player must move robber; click a tile, then choose victim or move only.
 - Discard panel: appears only for players required to discard.
@@ -71,7 +73,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Log/chat panel: game log, chat input, Send.
 
 ## Asset files
-Terrain: `terrain_forest.png`, `terrain_pasture.png`, `terrain_field.png`, `terrain_hill.png`, `terrain_mountain.png`, `terrain_desert.png`, `terrain_gold.png`, `terrain_sea.png`.
+Terrain: `terrain_forest.png`, `terrain_pasture.png`, `terrain_field.png`, `terrain_hill.png`, `terrain_mountain.png`, `terrain_desert.png`, `terrain_gold.png`, `terrain_fog.png`, `terrain_sea.png`. Gold is a flat green-yellow hex placeholder for drawing over.
 
 Resource cards: `resource_lumber.png`, `resource_brick.png`, `resource_wool.png`, `resource_grain.png`, `resource_ore.png`.
 

@@ -16,7 +16,8 @@ TERRAINS = {
     "hill": (188, 108, 37),
     "mountain": (141, 153, 174),
     "desert": (212, 163, 115),
-    "gold": (245, 185, 48),
+    "gold": (188, 210, 54),
+    "fog": (214, 218, 210),
     "sea": (201, 243, 244),
 }
 RESOURCES = {
@@ -80,6 +81,11 @@ def terrain_asset(name: str, color: tuple[int, int, int]) -> Image.Image:
     image = Image.new("RGBA", (512, 512), color + (255,))
     if name == "sea":
         return image
+    if name == "gold":
+        mask = Image.new("L", (512, 512), 0)
+        ImageDraw.Draw(mask).polygon(hex_points(256, 256, 246), fill=255)
+        image.putalpha(mask)
+        return image
     draw = ImageDraw.Draw(image)
     for i in range(0, 650, 32):
         shade = tuple(max(0, min(255, channel + (18 if (i // 32) % 2 else -12))) for channel in color)
@@ -104,10 +110,9 @@ def terrain_asset(name: str, color: tuple[int, int, int]) -> Image.Image:
     elif name == "desert":
         for y in range(100, 470, 80):
             draw.arc((-20, y, 540, y + 120), 180, 360, fill=(245, 214, 160, 125), width=8)
-    elif name == "gold":
-        for x in range(70, 470, 95):
-            for y in range(90, 450, 95):
-                draw.ellipse((x - 22, y - 15, x + 22, y + 15), fill=(255, 225, 84, 180), outline=(149, 95, 15, 130), width=3)
+    elif name == "fog":
+        for y in range(70, 500, 70):
+            draw.arc((-40, y, 552, y + 110), 180, 360, fill=(245, 245, 238, 150), width=10)
     elif name == "sea":
         for y in range(30, 512, 70):
             draw.arc((-30, y, 150, y + 70), 0, 180, fill=(111, 211, 230, 110), width=6)

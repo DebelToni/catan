@@ -6,7 +6,7 @@ from app.maps import generate_map, generate_standard_map, has_adjacent_same_reso
 
 def join_players(store, game, count=2):
     players = []
-    colors = ["red", "blue", "green", "orange"]
+    colors = ["red", "blue", "green", "orange", "purple", "teal"]
     for index in range(count):
         _, player = store.join_game(game.id, f"P{index + 1}", colors[index])
         players.append(player)
@@ -28,15 +28,24 @@ def test_standard_map_distribution_and_red_numbers_not_adjacent():
     assert not has_adjacent_same_resources(board["hexes"])
 
 
-def test_map_presets_include_crescent_and_seafarers_gold():
-    crescent = generate_map("crescent", seed="crescent")
-    seafarers = generate_map("seafarers_gold", seed="sea")
-    assert crescent["id"] == "crescent"
-    assert seafarers["id"] == "seafarers_gold"
+def test_map_presets_include_crescent_seafarers_and_5_6_versions():
+    expected_sizes = {
+        "crescent": 19,
+        "seafarers_gold": 31,
+        "standard_56": 30,
+        "crescent_56": 30,
+        "seafarers_gold_56": 47,
+    }
+    for preset, size in expected_sizes.items():
+        board = generate_map(preset, seed=preset)
+        assert board["id"] == preset
+        assert len(board["hexes"]) == size
+        assert not has_adjacent_red_numbers(board["hexes"])
+    seafarers = generate_map("seafarers_gold_56", seed="sea")
     assert any(hex_tile["terrain"] == "gold" for hex_tile in seafarers["hexes"])
     assert any(hex_tile["terrain"] == "sea" for hex_tile in seafarers["hexes"])
-    assert not has_adjacent_red_numbers(crescent["hexes"])
-    assert not has_adjacent_red_numbers(seafarers["hexes"])
+    assert any(hex_tile.get("hidden") for hex_tile in seafarers["hexes"])
+    assert seafarers["players_5_6"] is True
 
 
 def test_settlement_distance_rule_blocks_adjacent_intersection():
@@ -75,6 +84,80 @@ def test_gold_tile_requires_resource_choice():
     game.choose_gold_resources(p1.id, {"ore": 1})
     assert game.pending_gold == {}
     assert p1.resources["ore"] == 1
+
+
+def test_pirate_moves_to_sea_and_blocks_ship_placement():
+    store = GameStore()
+    game = store.create_game({"map_preset": "seafarers_gold", "map_seed": "pirate"})
+    p1, p2 = join_players(store, game, 2)
+    coastal_edge = next(edge for edge in game.board["edges"] if len(edge["hexes"]) == 1 and game.hex_by_id(edge["hexes"][0])["terrain"] != "sea")
+    assert game.edge_touches_sea(coastal_edge["id"])
+    sea_hex = next(hex_tile for hex_tile in game.board["hexes"] if hex_tile["terrain"] == "sea" and hex_tile["id"] != game.pirate_hex_id)
+    sea_edge = sea_hex["edges"][0]
+    game.roads[sea_edge] = p2.id
+    p2.resources["ore"] = 1
+    game.turn_stage = "move_robber"
+    game.current_player_id = p1.id
+    game.pending_robber = {"player_id": p1.id, "return_stage": "main"}
+    game.move_robber(p1.id, sea_hex["id"], p2.id)
+    assert game.pirate_hex_id == sea_hex["id"]
+    assert p1.resources["ore"] == 1
+    blocked_edge = next(edge_id for edge_id in sea_hex["edges"] if edge_id not in game.roads)
+    with pytest.raises(GameError):
+        game.validate_road(p1.id, blocked_edge)
+
+
+def test_knight_returns_to_main_turn_after_robber_move():
+    store = GameStore()
+    game = store.create_game({"map_seed": "knight"})
+    p1, _ = join_players(store, game, 2)
+    game.phase = "playing"
+    game.turn_stage = "main"
+    game.current_player_id = p1.id
+    game.turn_number = 2
+    card = {"id": "k1", "type": "knight", "bought_turn": 1}
+    p1.dev_cards.append(card)
+    game.play_development_card(p1.id, card["id"])
+    assert game.turn_stage == "move_robber"
+    target = next(hex_tile for hex_tile in game.board["hexes"] if hex_tile["id"] != game.robber_hex_id and hex_tile["terrain"] != "sea")
+    game.move_robber(p1.id, target["id"])
+    assert game.turn_stage == "main"
+
+
+def test_fog_reveals_when_ship_reaches_it():
+    store = GameStore()
+    game = store.create_game({"map_preset": "seafarers_gold", "map_seed": "fog"})
+    p1, _ = join_players(store, game, 2)
+    fog_hex = next(hex_tile for hex_tile in game.board["hexes"] if hex_tile.get("hidden"))
+    public_before = next(hex_tile for hex_tile in game.public_board()["hexes"] if hex_tile["id"] == fog_hex["id"])
+    assert public_before["terrain"] == "fog"
+    assert public_before["number"] is None
+    game.buildings[fog_hex["vertices"][0]] = {"player_id": p1.id, "type": "settlement"}
+    game.distribute_resources(fog_hex["number"])
+    assert sum(p1.resources.values()) == 0
+    edge = fog_hex["edges"][0]
+    game.reveal_fog_from_edge(edge, p1)
+    public_after = next(hex_tile for hex_tile in game.public_board()["hexes"] if hex_tile["id"] == fog_hex["id"])
+    assert fog_hex["revealed"] is True
+    assert public_after["terrain"] == fog_hex["terrain"]
+
+
+def test_five_six_uses_paired_player_turn():
+    store = GameStore()
+    game = store.create_game({"map_preset": "standard_56", "map_seed": "paired"})
+    players = join_players(store, game, 6)
+    game.phase = "playing"
+    game.turn_stage = "main"
+    game.current_player_id = players[0].id
+    game.paired_primary_player_id = players[0].id
+    game.paired_partner_player_id = players[3].id
+    game.end_turn(players[0].id)
+    assert game.turn_stage == "paired_build"
+    assert game.current_player_id == players[3].id
+    game.end_turn(players[3].id)
+    assert game.turn_stage == "must_roll"
+    assert game.current_player_id == players[1].id
+    assert game.paired_partner_player_id == players[4].id
 
 
 def test_production_skips_robber_tile():
