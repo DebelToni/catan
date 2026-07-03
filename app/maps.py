@@ -10,6 +10,22 @@ STANDARD_COORDS = [
     for r in range(-2, 3)
     for q in range(max(-2, -r - 2), min(2, -r + 2) + 1)
 ]
+CRESCENT_COORDS = [
+    (-3, 0), (-3, 1),
+    (-2, -1), (-2, 0), (-2, 1), (-2, 2),
+    (-1, -2), (-1, -1), (-1, 0), (-1, 2),
+    (0, -2), (0, -1), (0, 0), (0, 1),
+    (1, -1), (1, 0), (1, 1),
+    (2, -1), (2, 0),
+]
+SEAFARERS_COORDS = [
+    (-4, 0), (-3, -1), (-3, 0), (-3, 1), (-2, -1), (-2, 0), (-2, 1),
+    (2, -1), (2, 0), (2, 1), (3, -2), (3, -1), (3, 0), (4, -2),
+    (-1, -3), (0, -3), (1, -3), (0, -2),
+    (-1, 2), (0, 2), (1, 1), (1, 2),
+    (-1, 0), (1, -1), (0, 1),
+    (-1, -2), (0, -1), (0, 0), (1, 0), (2, -2), (-2, 2),
+]
 TERRAIN_DISTRIBUTION = [
     "forest", "forest", "forest", "forest",
     "pasture", "pasture", "pasture", "pasture",
@@ -18,24 +34,76 @@ TERRAIN_DISTRIBUTION = [
     "mountain", "mountain", "mountain",
     "desert",
 ]
+SEAFARERS_LAND_DISTRIBUTION = [
+    "forest", "forest", "forest", "forest", "forest",
+    "pasture", "pasture", "pasture", "pasture", "pasture",
+    "field", "field", "field", "field", "field",
+    "hill", "hill", "hill", "hill",
+    "mountain", "mountain", "mountain",
+]
 # Official letter-token order used when placing numbers in a spiral and skipping the desert.
 NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11]
+SEAFARERS_NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11, 3, 4, 5, 6, 9, 10]
 RESOURCE_PORTS = ["lumber", "brick", "wool", "grain", "ore"]
 PORT_TYPES = ["3:1", "3:1", "3:1", "3:1", *RESOURCE_PORTS]
 HEX_DIRECTIONS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
 SQRT3 = math.sqrt(3)
+LAND_TERRAINS = {"forest", "pasture", "field", "hill", "mountain", "desert", "gold"}
+MAP_PRESETS = [
+    {"id": "standard", "name": "Balanced Standard"},
+    {"id": "crescent", "name": "Crescent Bay"},
+    {"id": "seafarers_gold", "name": "Seafarers Gold Isles"},
+]
+
+
+def list_map_presets() -> list[dict[str, str]]:
+    return deepcopy(MAP_PRESETS)
+
+
+def generate_map(preset: str = "standard", seed: str | int | None = None) -> dict[str, Any]:
+    if preset == "crescent":
+        return generate_balanced_land_map(
+            preset="crescent",
+            name="Crescent Bay",
+            coords=CRESCENT_COORDS,
+            terrain_distribution=TERRAIN_DISTRIBUTION,
+            number_tokens=NUMBER_TOKENS,
+            seed=seed,
+        )
+    if preset == "seafarers_gold":
+        return generate_seafarers_gold_map(seed)
+    return generate_standard_map(seed)
 
 
 def generate_standard_map(seed: str | int | None = None) -> dict[str, Any]:
+    return generate_balanced_land_map(
+        preset="standard",
+        name="Balanced Standard 3-4-5-4-3 Island",
+        coords=STANDARD_COORDS,
+        terrain_distribution=TERRAIN_DISTRIBUTION,
+        number_tokens=NUMBER_TOKENS,
+        seed=seed,
+        number_order=standard_spiral_coords(),
+    )
+
+
+def generate_balanced_land_map(
+    preset: str,
+    name: str,
+    coords: list[tuple[int, int]],
+    terrain_distribution: list[str],
+    number_tokens: list[int],
+    seed: str | int | None,
+    number_order: list[tuple[int, int]] | None = None,
+) -> dict[str, Any]:
     rng = random.Random(seed)
-    coords = list(STANDARD_COORDS)
     best_hexes = None
     best_score = 10**9
-
+    order = number_order or number_order_for_shape(coords)
     for _ in range(12000):
-        terrains = list(TERRAIN_DISTRIBUTION)
+        terrains = list(terrain_distribution)
         rng.shuffle(terrains)
-        hexes = build_hex_specs(coords, terrains, list(NUMBER_TOKENS))
+        hexes = build_hex_specs(coords, terrains, number_tokens, order)
         score = score_layout(hexes)
         if score < best_score:
             best_hexes = hexes
@@ -43,14 +111,60 @@ def generate_standard_map(seed: str | int | None = None) -> dict[str, Any]:
         if score <= 20:
             break
     return attach_topology({
-        "id": "standard",
-        "name": "Balanced Standard 3-4-5-4-3 Island",
-        "hexes": best_hexes or build_hex_specs(coords, list(TERRAIN_DISTRIBUTION), list(NUMBER_TOKENS)),
+        "id": preset,
+        "name": name,
+        "hexes": best_hexes or build_hex_specs(coords, list(terrain_distribution), number_tokens, order),
         "ports": build_ports(rng),
     })
 
 
-def build_hex_specs(coords: list[tuple[int, int]], terrains: list[str], numbers: list[int]) -> list[dict[str, Any]]:
+def generate_seafarers_gold_map(seed: str | int | None = None) -> dict[str, Any]:
+    rng = random.Random(seed)
+    fixed = {
+        (-1, 0): "gold",
+        (1, -1): "gold",
+        (0, 1): "desert",
+        (-1, -2): "sea",
+        (0, -1): "sea",
+        (0, 0): "sea",
+        (1, 0): "sea",
+        (2, -2): "sea",
+        (-2, 2): "sea",
+    }
+    variable_coords = [coord for coord in SEAFARERS_COORDS if coord not in fixed]
+    order = number_order_for_shape(SEAFARERS_COORDS)
+    best_hexes = None
+    best_score = 10**9
+    for _ in range(14000):
+        terrains = list(SEAFARERS_LAND_DISTRIBUTION)
+        rng.shuffle(terrains)
+        numbers = list(SEAFARERS_NUMBER_TOKENS)
+        rng.shuffle(numbers)
+        by_coord = dict(fixed)
+        by_coord.update(dict(zip(variable_coords, terrains)))
+        hexes = build_hex_specs(SEAFARERS_COORDS, [by_coord[coord] for coord in SEAFARERS_COORDS], numbers, order)
+        score = score_layout(hexes)
+        if score < best_score:
+            best_hexes = hexes
+            best_score = score
+        if score <= 20:
+            break
+    return attach_topology({
+        "id": "seafarers_gold",
+        "name": "Seafarers Gold Isles",
+        "hexes": best_hexes or [],
+        "ports": build_ports(rng),
+        "uses_ships": True,
+        "uses_gold": True,
+    })
+
+
+def build_hex_specs(
+    coords: list[tuple[int, int]],
+    terrains: list[str],
+    numbers: list[int],
+    number_order: list[tuple[int, int]] | None = None,
+) -> list[dict[str, Any]]:
     result = []
     for index, ((q, r), terrain) in enumerate(zip(coords, terrains)):
         x, y = axial_to_pixel(q, r)
@@ -63,24 +177,24 @@ def build_hex_specs(coords: list[tuple[int, int]], terrains: list[str], numbers:
             "terrain": terrain,
             "number": None,
         })
-    assign_numbers_in_spiral(result, numbers)
+    assign_numbers(result, numbers, number_order or number_order_for_shape(coords))
     return result
 
 
-def assign_numbers_in_spiral(hexes: list[dict[str, Any]], numbers: list[int]) -> None:
+def assign_numbers(hexes: list[dict[str, Any]], numbers: list[int], order: list[tuple[int, int]]) -> None:
     by_coord = {(hex_tile["q"], hex_tile["r"]): hex_tile for hex_tile in hexes}
     number_index = 0
-    for coord in spiral_coords(radius=2):
-        hex_tile = by_coord[coord]
-        if hex_tile["terrain"] == "desert":
+    for coord in order:
+        hex_tile = by_coord.get(coord)
+        if not hex_tile or hex_tile["terrain"] in {"desert", "sea"}:
             continue
+        if number_index >= len(numbers):
+            break
         hex_tile["number"] = numbers[number_index]
         number_index += 1
 
 
-def spiral_coords(radius: int) -> list[tuple[int, int]]:
-    if radius != 2:
-        raise ValueError("Only the standard radius-2 island is supported right now.")
+def standard_spiral_coords() -> list[tuple[int, int]]:
     return [
         (0, -2), (1, -2), (2, -2), (2, -1), (2, 0), (1, 1),
         (0, 2), (-1, 2), (-2, 2), (-2, 1), (-2, 0), (-1, -1),
@@ -89,11 +203,20 @@ def spiral_coords(radius: int) -> list[tuple[int, int]]:
     ]
 
 
+def number_order_for_shape(coords: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    def sort_key(coord: tuple[int, int]) -> tuple[int, float, float]:
+        q, r = coord
+        ring = max(abs(q), abs(r), abs(-q - r))
+        x, y = axial_to_pixel(q, r)
+        return (-ring, math.atan2(y, x), math.hypot(x, y))
+    return sorted(coords, key=sort_key)
+
+
 def score_layout(hexes: list[dict[str, Any]]) -> int:
     red_adjacencies = count_adjacent_pairs(hexes, lambda a, b: a.get("number") in {6, 8} and b.get("number") in {6, 8})
     same_resource_adjacencies = count_adjacent_pairs(
         hexes,
-        lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] != "desert",
+        lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] not in {"desert", "sea"},
     )
     red_terrains = [hex_tile["terrain"] for hex_tile in hexes if hex_tile.get("number") in {6, 8}]
     duplicate_red_resources = len(red_terrains) - len(set(red_terrains))
@@ -123,7 +246,7 @@ def has_adjacent_red_numbers(hexes: list[dict[str, Any]]) -> bool:
 
 
 def has_adjacent_same_resources(hexes: list[dict[str, Any]]) -> bool:
-    return count_adjacent_pairs(hexes, lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] != "desert") > 0
+    return count_adjacent_pairs(hexes, lambda a, b: a["terrain"] == b["terrain"] and a["terrain"] not in {"desert", "sea"}) > 0
 
 
 def axial_to_pixel(q: int, r: int, size: float = 1.0) -> tuple[float, float]:
@@ -207,7 +330,7 @@ def build_ports(rng: random.Random) -> list[dict[str, Any]]:
 
 
 def resolve_ports(port_specs: list[dict[str, Any]], edges: list[dict[str, Any]], vertices_by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    boundary_edges = [edge for edge in edges if len(edge["hexes"]) == 1]
+    boundary_edges = [edge for edge in edges if len(edge["hexes"]) == 1 and not edge_is_all_sea(edge, vertices_by_id)]
     boundary_edges.sort(key=lambda edge: edge_angle(edge, vertices_by_id))
     if not boundary_edges:
         return []
@@ -231,6 +354,10 @@ def resolve_ports(port_specs: list[dict[str, Any]], edges: list[dict[str, Any]],
                 "kind": spec.get("kind", "3:1"),
             })
     return selected
+
+
+def edge_is_all_sea(edge: dict[str, Any], vertices_by_id: dict[str, dict[str, Any]]) -> bool:
+    return False
 
 
 def edge_angle(edge: dict[str, Any], vertices_by_id: dict[str, dict[str, Any]]) -> float:

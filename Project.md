@@ -3,13 +3,14 @@
 ## Product
 A browser-based, private-room, Catan-style board game for friends. It runs on a local Flask server and can expose the same local game through a Cloudflare tunnel URL printed in the server stdout.
 
-The implementation uses original placeholder art and does not copy Colonist.io/CATAN branding or assets. The target feel is a fast online hex-board experience: create room, choose color, drag/zoom the board, roll dice with a dice strip animation, build, trade, and play to the configured victory point target.
+The implementation uses original placeholder art and does not copy Colonist.io/CATAN branding or assets. The target feel is a fast online hex-board experience: create room, choose color, drag/zoom the board, click the dice on the sea, build, trade, and play to the configured victory point target.
 
 ## Current build
 - Local Flask + Socket.IO server with in-memory rooms.
 - `run.py` starts the web server and, unless disabled, starts `cloudflared tunnel --url http://localhost:<port>` and prints the public trycloudflare URL when Cloudflare emits it.
-- Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, dice strip animation over the sea, player list, bottom hand/action dock, click-card trades, chat, and action log.
-- Standard 19-hex base island with seeded balanced terrain placement, official number-token spiral order, no adjacent 6/8 numbers, and no adjacent same-resource terrain tiles.
+- Single-page frontend with room creation, room joining, color selection, map panning/zooming, clickable intersections/edges/tiles, clickable dice over the sea, player list, bottom hand/action dock, click-card trades, chat, and action log.
+- Map presets: Balanced Standard, Crescent Bay, and Seafarers Gold Isles.
+- Standard and Crescent use seeded balanced terrain placement, number-token spiral order, no adjacent 6/8 numbers, and reduced same-resource terrain clustering.
 - Generic board topology generation: hexes, vertices, edges, ports, adjacency, robber tile, roads, settlements, and cities are derived from the map config so custom maps can be added later.
 - Generated placeholder PNG assets in `app/static/assets/`. Existing assets are loaded directly by the browser, so redrawing a PNG and restarting/refreshing uses the new art.
 - Roads, settlements, and cities are rendered programmatically in the player's selected color, so they do not use PNG assets.
@@ -19,8 +20,9 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Max hand limit before robber discard: default 7, configurable 1-30. Players over the limit discard half, rounded down.
 - Turn timer seconds: stored in settings; enforcement is not built yet.
 - Friendly robber: optional; when enabled, robber steals only from players above 2 public VP.
-- Random standard map: enabled by default.
-- Map seed: blank creates a random seed; a fixed seed recreates the same map.
+- Map preset: Balanced Standard, Crescent Bay, or Seafarers Gold Isles.
+- Random standard map: legacy toggle; map preset + seed determines current generation.
+- Map seed: blank creates a random seed; a fixed seed recreates the same map preset.
 - Bank privacy: always private. Bank card counts are never shown as a game setting or public UI.
 - Player colors: red, blue, orange, white, green, purple, black, pink, yellow, teal. Each color can be taken once.
 - Player count: room can start with 2+ joined players; the engine does not hard-code a 4-player maximum.
@@ -35,8 +37,10 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Starting resources are granted from tiles adjacent to each player's second setup settlement.
 - A normal turn starts with dice roll, then main actions, then end turn.
 - Non-7 rolls produce resources for adjacent settlements/cities: settlement = 1, city = 2.
+- Gold terrain produces selectable resources: the owning player clicks resource cards to choose exactly the gold amount produced.
 - Rolling 7 triggers hand-limit discards, robber movement, and a random steal from an adjacent victim if chosen/available.
 - Roads cost lumber + brick and must connect to the player's network or building.
+- On sea maps, edges touching sea are ships: they cost lumber + wool and render as dashed player-colored routes.
 - Settlements cost lumber + brick + wool + grain and must connect to the player's road after setup.
 - Cities cost 2 grain + 3 ore and upgrade an owned settlement.
 - Development cards cost wool + grain + ore.
@@ -54,9 +58,9 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 
 ## Screens and buttons
 - Home: Create game, Join game, open-game shortcuts.
-- Create game: name input, color buttons, points to win, max hand limit, turn timer seconds, map seed, random map toggle, friendly robber toggle, Create room.
+- Create game: name input, color buttons, points to win, max hand limit, turn timer seconds, map preset, map seed, random map toggle, friendly robber toggle, Create room.
 - Join game: game code, name input, color buttons, Join room.
-- Top bar: game code, phase/stage pill, dice strip, Copy link, Fit board.
+- Top bar: game code, phase/stage pill, Copy link, Fit board.
 - Player panel: color, name, host marker, connection state, public VP, own total VP, resource count, development card count, played Knights, current longest road length.
 - Turn panel: Start game, Roll dice, Road, Settlement, City, Buy dev, End turn, contextual setup/robber/free-road help.
 - Hand panel: private resource counts and private development cards with Play buttons when legal.
@@ -67,7 +71,7 @@ The implementation uses original placeholder art and does not copy Colonist.io/C
 - Log/chat panel: game log, chat input, Send.
 
 ## Asset files
-Terrain: `terrain_forest.png`, `terrain_pasture.png`, `terrain_field.png`, `terrain_hill.png`, `terrain_mountain.png`, `terrain_desert.png`, `terrain_sea.png`.
+Terrain: `terrain_forest.png`, `terrain_pasture.png`, `terrain_field.png`, `terrain_hill.png`, `terrain_mountain.png`, `terrain_desert.png`, `terrain_gold.png`, `terrain_sea.png`.
 
 Resource cards: `resource_lumber.png`, `resource_brick.png`, `resource_wool.png`, `resource_grain.png`, `resource_ore.png`.
 

@@ -1,7 +1,7 @@
 import pytest
 
 from app.game_engine import GameError, GameStore, RESOURCE_TYPES
-from app.maps import generate_standard_map, has_adjacent_same_resources, has_adjacent_red_numbers
+from app.maps import generate_map, generate_standard_map, has_adjacent_same_resources, has_adjacent_red_numbers
 
 
 def join_players(store, game, count=2):
@@ -28,6 +28,17 @@ def test_standard_map_distribution_and_red_numbers_not_adjacent():
     assert not has_adjacent_same_resources(board["hexes"])
 
 
+def test_map_presets_include_crescent_and_seafarers_gold():
+    crescent = generate_map("crescent", seed="crescent")
+    seafarers = generate_map("seafarers_gold", seed="sea")
+    assert crescent["id"] == "crescent"
+    assert seafarers["id"] == "seafarers_gold"
+    assert any(hex_tile["terrain"] == "gold" for hex_tile in seafarers["hexes"])
+    assert any(hex_tile["terrain"] == "sea" for hex_tile in seafarers["hexes"])
+    assert not has_adjacent_red_numbers(crescent["hexes"])
+    assert not has_adjacent_red_numbers(seafarers["hexes"])
+
+
 def test_settlement_distance_rule_blocks_adjacent_intersection():
     store = GameStore()
     game = store.create_game({"map_seed": "distance"})
@@ -50,6 +61,20 @@ def test_second_setup_settlement_grants_starting_resources():
     complete_setup_slot(game, p2.id)
     before = sum(p2.resources.values())
     assert before > 0
+
+
+def test_gold_tile_requires_resource_choice():
+    store = GameStore()
+    game = store.create_game({"map_preset": "seafarers_gold", "map_seed": "gold"})
+    p1, _ = join_players(store, game, 2)
+    hex_tile = next(hex_tile for hex_tile in game.board["hexes"] if hex_tile["terrain"] == "gold" and hex_tile["number"])
+    game.buildings[hex_tile["vertices"][0]] = {"player_id": p1.id, "type": "settlement"}
+    game.distribute_resources(hex_tile["number"])
+    assert game.pending_gold[p1.id] == 1
+    game.turn_stage = "gold_choice"
+    game.choose_gold_resources(p1.id, {"ore": 1})
+    assert game.pending_gold == {}
+    assert p1.resources["ore"] == 1
 
 
 def test_production_skips_robber_tile():

@@ -4,6 +4,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO, emit, join_room
 
 from .game_engine import GameError, GameStore, PLAYER_COLORS, RESOURCE_TYPES
+from .maps import list_map_presets
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "local-catan-dev-secret"
@@ -35,7 +36,7 @@ def health():
 
 @socketio.on("connect")
 def on_connect():
-    emit("server_info", {"colors": PLAYER_COLORS, "resources": RESOURCE_TYPES})
+    emit("server_info", {"colors": PLAYER_COLORS, "resources": RESOURCE_TYPES, "map_presets": list_map_presets()})
 
 
 @socketio.on("disconnect")
@@ -97,6 +98,11 @@ def on_build(data):
 @socketio.on("discard")
 def on_discard(data):
     with_game_player(data, lambda game, player_id: game.discard(player_id, (data or {}).get("resources") or {}))
+
+
+@socketio.on("choose_gold")
+def on_choose_gold(data):
+    with_game_player(data, lambda game, player_id: game.choose_gold_resources(player_id, (data or {}).get("resources") or {}))
 
 
 @socketio.on("move_robber")

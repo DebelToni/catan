@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from .maps import generate_standard_map
+from .maps import generate_map, list_map_presets
 
 RESOURCE_TYPES = ["lumber", "brick", "wool", "grain", "ore"]
 TERRAIN_TO_RESOURCE = {
@@ -19,6 +19,7 @@ TERRAIN_TO_RESOURCE = {
 }
 BUILD_COSTS = {
     "road": {"lumber": 1, "brick": 1},
+    "ship": {"lumber": 1, "wool": 1},
     "settlement": {"lumber": 1, "brick": 1, "wool": 1, "grain": 1},
     "city": {"grain": 2, "ore": 3},
     "development": {"wool": 1, "grain": 1, "ore": 1},
@@ -43,6 +44,7 @@ DEFAULT_SETTINGS = {
     "random_map": True,
     "map_seed": "",
     "allow_spectators": True,
+    "map_preset": "standard",
 }
 DEV_DECK_TEMPLATE = (
     ["knight"] * 14
@@ -113,6 +115,7 @@ class Game:
     last_roll: dict[str, Any] | None = None
     pending_discards: dict[str, int] = field(default_factory=dict)
     pending_robber: dict[str, Any] | None = None
+    pending_gold: dict[str, int] = field(default_factory=dict)
     free_roads_remaining: int = 0
     largest_army_holder: str | None = None
     largest_army_size: int = 0
@@ -199,7 +202,7 @@ class Game:
                 self.add_log(f"{player.name} must move the robber.")
         else:
             self.distribute_resources(total)
-            self.turn_stage = "main"
+            self.turn_stage = "gold_choice" if self.pending_gold else "main"
         return roll
 
     def distribute_resources(self, number: int) -> None:
@@ -208,7 +211,7 @@ class Game:
             if hex_tile.get("number") != number or hex_tile["id"] == self.robber_hex_id:
                 continue
             resource = TERRAIN_TO_RESOURCE.get(hex_tile["terrain"])
-            if not resource:
+            if not resource and hex_tile["terrain"] != "gold":
                 continue
             for vertex_id in hex_tile["vertices"]:
                 building = self.buildings.get(vertex_id)
@@ -216,6 +219,10 @@ class Game:
                     continue
                 player = self.players[building["player_id"]]
                 amount = 2 if building["type"] == "city" else 1
+                if hex_tile["terrain"] == "gold":
+                    self.pending_gold[player.id] = self.pending_gold.get(player.id, 0) + amount
+                    produced.append(f"{player.name} chooses {amount} gold resource")
+                    continue
                 available = self.bank.get(resource, 0)
                 if available <= 0:
                     continue
@@ -224,6 +231,25 @@ class Game:
                 self.bank[resource] -= amount
                 produced.append(f"{player.name} +{amount} {resource}")
         self.add_log("Production: " + (", ".join(produced) if produced else "nothing produced."))
+
+    def choose_gold_resources(self, player_id: str, resources: dict[str, int]) -> None:
+        if self.turn_stage != "gold_choice" or player_id not in self.pending_gold:
+            raise GameError("You do not need to choose gold resources right now.")
+        player = self.get_player(player_id)
+        clean = clean_resource_dict(resources)
+        required = self.pending_gold[player_id]
+        if resource_total(clean) != required:
+            raise GameError(f"Choose exactly {required} resources for gold production.")
+        for resource, amount in clean.items():
+            if self.bank.get(resource, 0) < amount:
+                raise GameError(f"The bank does not have enough {resource}.")
+        for resource, amount in clean.items():
+            player.resources[resource] += amount
+            self.bank[resource] -= amount
+        del self.pending_gold[player_id]
+        self.add_log(f"{player.name} chose {required} gold resources.")
+        if not self.pending_gold:
+            self.turn_stage = "main"
 
     def discard(self, player_id: str, resources: dict[str, int]) -> None:
         if self.turn_stage != "discard" or player_id not in self.pending_discards:
@@ -250,6 +276,8 @@ class Game:
         if hex_id == self.robber_hex_id:
             raise GameError("Move the robber to a different tile.")
         hex_tile = self.hex_by_id(hex_id)
+        if hex_tile["terrain"] == "sea":
+            raise GameError("Move the robber to a land tile.")
         adjacent_player_ids = self.players_on_hex(hex_id)
         possible_victims = [pid for pid in adjacent_player_ids if pid != player_id and resource_total(self.players[pid].resources) > 0]
         if self.settings.get("friendly_robber"):
@@ -290,10 +318,11 @@ class Game:
         if build_type == "road":
             self.validate_road(player_id, target_id)
             if not free_road:
-                ensure_has(player, BUILD_COSTS["road"])
-                pay_to_bank(self, player, BUILD_COSTS["road"])
+                cost = BUILD_COSTS["ship"] if self.edge_touches_sea(target_id) else BUILD_COSTS["road"]
+                ensure_has(player, cost)
+                pay_to_bank(self, player, cost)
             self.roads[target_id] = player_id
-            self.add_log(f"{player.name} built a road.")
+            self.add_log(f"{player.name} built a {'ship' if self.edge_touches_sea(target_id) else 'road'}.")
             if free_road:
                 self.free_roads_remaining -= 1
                 if self.free_roads_remaining <= 0:
@@ -366,6 +395,8 @@ class Game:
     def validate_settlement(self, player_id: str, vertex_id: str, setup: bool) -> None:
         if vertex_id not in self.board["vertices_by_id"]:
             raise GameError("Unknown intersection.")
+        if not self.vertex_touches_land(vertex_id):
+            raise GameError("Settlements must touch land.")
         if vertex_id in self.buildings:
             raise GameError("That intersection is occupied.")
         for neighbor in self.board["vertex_neighbors"].get(vertex_id, []):
@@ -584,6 +615,14 @@ class Game:
         except KeyError as exc:
             raise GameError("Unknown tile.") from exc
 
+    def vertex_touches_land(self, vertex_id: str) -> bool:
+        vertex = self.board["vertices_by_id"][vertex_id]
+        return any(self.hex_by_id(hex_id)["terrain"] != "sea" for hex_id in vertex["hexes"])
+
+    def edge_touches_sea(self, edge_id: str) -> bool:
+        edge = self.board["edges_by_id"][edge_id]
+        return any(self.hex_by_id(hex_id)["terrain"] == "sea" for hex_id in edge["hexes"])
+
     def players_on_hex(self, hex_id: str) -> list[str]:
         hex_tile = self.hex_by_id(hex_id)
         player_ids = []
@@ -718,6 +757,7 @@ class Game:
             "last_roll": deepcopy(self.last_roll),
             "pending_discards": deepcopy(self.pending_discards),
             "pending_robber": deepcopy(self.pending_robber),
+            "pending_gold": deepcopy(self.pending_gold),
             "free_roads_remaining": self.free_roads_remaining,
             "largest_army_holder": self.largest_army_holder,
             "largest_army_size": self.largest_army_size,
@@ -728,6 +768,7 @@ class Game:
             "log": self.log[-80:],
             "winner": self.winner,
             "colors": PLAYER_COLORS,
+            "map_presets": list_map_presets(),
         }
 
     def public_board(self) -> dict[str, Any]:
@@ -738,6 +779,8 @@ class Game:
             "vertices": self.board["vertices"],
             "edges": self.board["edges"],
             "ports": self.board.get("ports", []),
+            "uses_ships": self.board.get("uses_ships", False),
+            "uses_gold": self.board.get("uses_gold", False),
         }
 
 
@@ -790,11 +833,14 @@ class GameStore:
         merged["friendly_robber"] = bool(merged.get("friendly_robber"))
         merged["random_map"] = bool(merged.get("random_map", True))
         merged["allow_spectators"] = bool(merged.get("allow_spectators", True))
+        preset_ids = {preset["id"] for preset in list_map_presets()}
+        if merged.get("map_preset") not in preset_ids:
+            merged["map_preset"] = "standard"
         seed = str(merged.get("map_seed") or "").strip()
         if not seed and merged["random_map"]:
             seed = short_id(8)
         merged["map_seed"] = seed
-        board = generate_standard_map(seed=seed or "standard")
+        board = generate_map(merged["map_preset"], seed=seed or merged["map_preset"])
         game_id = short_id()
         while game_id in self.games:
             game_id = short_id()

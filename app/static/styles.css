@@ -19,7 +19,7 @@ body {
   color: var(--text);
   background: var(--bg);
 }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button {
   border: 1px solid #bfa985;
   border-radius: 9px;
@@ -39,7 +39,7 @@ button.primary {
   color: #2f1b0d;
   font-weight: 800;
 }
-input {
+input, select {
   width: 100%;
   padding: 9px 10px;
   border-radius: 9px;
@@ -184,7 +184,7 @@ h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: .01em; }
   border-radius: 999px; min-width: 18px; height: 18px; font-size: 11px; font-weight: 800; line-height: 16px;
 }
 .selected-summary { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-.discard-dock { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 6px; }
+.discard-dock { grid-column: 3; grid-row: 1; z-index: 4; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 6px; }
 .side-panel {
   grid-area: side;
   min-height: 0;

@@ -2,9 +2,9 @@ const socket = io();
 const RESOURCE_TYPES = ["lumber", "brick", "wool", "grain", "ore"];
 const RESOURCE_LABELS = {lumber: "Lumber", brick: "Brick", wool: "Wool", grain: "Grain", ore: "Ore"};
 const DEV_LABELS = {knight: "Knight", road_building: "Road Building", year_of_plenty: "Year of Plenty", monopoly: "Monopoly", victory_point: "Victory Point"};
-const TERRAIN_COLORS = {forest: "#2d6a4f", pasture: "#90be6d", field: "#e9c46a", hill: "#bc6c25", mountain: "#8d99ae", desert: "#d4a373"};
+const TERRAIN_COLORS = {forest: "#2d6a4f", pasture: "#90be6d", field: "#e9c46a", hill: "#bc6c25", mountain: "#8d99ae", desert: "#d4a373", gold: "#f5b930", sea: "#c9f3f4"};
 const ASSET_NAMES = [
-  "terrain_forest", "terrain_pasture", "terrain_field", "terrain_hill", "terrain_mountain", "terrain_desert", "terrain_sea",
+  "terrain_forest", "terrain_pasture", "terrain_field", "terrain_hill", "terrain_mountain", "terrain_desert", "terrain_gold", "terrain_sea",
   "resource_lumber", "resource_brick", "resource_wool", "resource_grain", "resource_ore",
   "icon_robber", "number_token",
   "dev_knight", "dev_road_building", "dev_year_of_plenty", "dev_monopoly", "dev_victory_point", "card_back_development",
@@ -13,6 +13,11 @@ const ASSET_NAMES = [
 ];
 
 let colors = [];
+let mapPresets = [
+  {id: "standard", name: "Balanced Standard"},
+  {id: "crescent", name: "Crescent Bay"},
+  {id: "seafarers_gold", name: "Seafarers Gold Isles"},
+];
 let state = null;
 let gameId = (document.body.dataset.gameId || new URLSearchParams(location.search).get("game") || "").toUpperCase();
 let playerId = null;
@@ -24,6 +29,7 @@ let bankSelection = {give: "lumber", receive: "grain"};
 let offerGiveSelection = emptyResourceSelection();
 let offerReceiveSelection = emptyResourceSelection();
 let discardSelection = emptyResourceSelection();
+let goldSelection = emptyResourceSelection();
 let chatOnly = readJson("catanChatOnly", true);
 let profile = readJson("catanProfile", {name: "", color: "red"});
 let savedPlayers = readJson("catanPlayers", {});
@@ -47,7 +53,9 @@ const pointer = {down: false, moved: false, x: 0, y: 0, startX: 0, startY: 0, ho
 
 socket.on("server_info", (data) => {
   colors = data.colors || [];
+  mapPresets = data.map_presets || mapPresets;
   renderColorPickers();
+  renderMapPresetOptions();
 });
 socket.on("game_created", ({game_id, player_id}) => {
   gameId = game_id;
@@ -94,6 +102,7 @@ window.addEventListener("load", () => {
 });
 
 function setupForms() {
+  renderMapPresetOptions();
   el("createForm").name.value = profile.name || "";
   el("joinForm").name.value = profile.name || "";
   if (gameId) el("joinForm").game_id.value = gameId;
@@ -110,6 +119,7 @@ function setupForms() {
         points_to_win: form.points_to_win.value,
         hand_limit: form.hand_limit.value,
         turn_timer_seconds: form.turn_timer_seconds.value,
+        map_preset: form.map_preset.value,
         random_map: form.random_map.checked,
         friendly_robber: form.friendly_robber.checked,
         map_seed: form.map_seed.value.trim(),
@@ -125,6 +135,14 @@ function setupForms() {
     writeJson("catanProfile", profile);
     socket.emit("join_game", {game_id: targetGame, name, color: joinColor, player_id: savedPlayers[targetGame]});
   });
+}
+
+function renderMapPresetOptions() {
+  const select = el("mapPresetSelect");
+  if (!select) return;
+  const current = select.value || "standard";
+  select.innerHTML = mapPresets.map((preset) => `<option value="${preset.id}">${preset.name}</option>`).join("");
+  select.value = mapPresets.some((preset) => preset.id === current) ? current : "standard";
 }
 
 function renderColorPickers() {
@@ -188,6 +206,11 @@ function setupControls() {
     discardSelection = emptyResourceSelection();
     renderDiscard();
   });
+  el("goldBtn").addEventListener("click", () => {
+    emit("choose_gold", {resources: goldSelection});
+    goldSelection = emptyResourceSelection();
+    renderGoldChoice();
+  });
   el("chatBtn").addEventListener("click", sendChat);
   el("chatInput").addEventListener("keydown", (event) => { if (event.key === "Enter") sendChat(); });
   el("chatOnlyToggle").addEventListener("click", () => {
@@ -223,6 +246,7 @@ function renderAll() {
   renderTurn();
   renderHand();
   renderDiscard();
+  renderGoldChoice();
   renderRobberPanel();
   renderTrades();
   renderLog();
@@ -278,7 +302,7 @@ function renderTurn() {
     selectedAction = null;
     el("actionHelp").textContent = "Click the dice on the water to roll. Rolling 7 triggers discards and robber movement.";
   } else if (state.turn_stage === "main") {
-    addActionControl("Road", "road");
+    addActionControl(state.board?.uses_ships ? "Road / Ship" : "Road", "road");
     addActionControl("Settlement", "settlement");
     addActionControl("City", "city");
     addControl("Buy dev", () => emit("buy_dev_card"));
@@ -290,7 +314,10 @@ function renderTurn() {
     el("actionHelp").textContent = "Road Building: click two empty edges connected to your network.";
   } else if (state.turn_stage === "move_robber") {
     selectedAction = "robber";
-    el("actionHelp").textContent = "Click a tile for the robber.";
+    el("actionHelp").textContent = "Click a land tile for the robber.";
+  } else if (state.turn_stage === "gold_choice") {
+    selectedAction = null;
+    el("actionHelp").textContent = "Players on gold tiles choose their produced resources.";
   } else if (state.turn_stage === "discard") {
     selectedAction = null;
     el("actionHelp").textContent = "Waiting for required discards.";
@@ -376,6 +403,25 @@ function renderDiscard() {
       renderDiscard();
     },
     onAltClick: (resource) => { discardSelection[resource] = Math.max(0, discardSelection[resource] - 1); renderDiscard(); },
+  });
+}
+
+function renderGoldChoice() {
+  const required = state.pending_gold?.[playerId] || 0;
+  el("goldPanel").classList.toggle("hidden", !required);
+  if (!required) {
+    goldSelection = emptyResourceSelection();
+    return;
+  }
+  const selected = resourceTotal(goldSelection);
+  el("goldNeed").textContent = `Choose ${required} resource${required === 1 ? "" : "s"} from gold. Selected ${selected}/${required}.`;
+  renderResourcePicker(el("goldInputs"), {
+    selected: goldSelection,
+    onClick: (resource) => {
+      if (selected < required) goldSelection[resource] += 1;
+      renderGoldChoice();
+    },
+    onAltClick: (resource) => { goldSelection[resource] = Math.max(0, goldSelection[resource] - 1); renderGoldChoice(); },
   });
 }
 
@@ -649,7 +695,9 @@ function drawRoads() {
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     ctx.strokeStyle = owner.color_hex;
     ctx.lineWidth = clamp(view.scale * 0.12, 6, 14);
+    ctx.setLineDash(edgeTouchesSea(edge) ? [12, 7] : []);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
   }
 }
 
@@ -816,6 +864,7 @@ function playersOnHex(hexId) {
 
 function vertexById(id) { return state.board.vertices.find((vertex) => vertex.id === id); }
 function edgeById(id) { return state.board.edges.find((edge) => edge.id === id); }
+function edgeTouchesSea(edge) { return (edge.hexes || []).some((hexId) => state.board.hexes.find((hex) => hex.id === hexId)?.terrain === "sea"); }
 function worldToScreenVertex(id) { const vertex = vertexById(id); return worldToScreen(vertex.x, vertex.y); }
 function worldToScreen(x, y) { return {x: view.x + x * view.scale, y: view.y + y * view.scale}; }
 function screenToWorld(x, y) { return {x: (x - view.x) / view.scale, y: (y - view.y) / view.scale}; }

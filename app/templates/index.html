@@ -31,6 +31,7 @@
           <label>Points to win <input name="points_to_win" type="number" min="1" max="30" value="10"></label>
           <label>Max hand limit <input name="hand_limit" type="number" min="1" max="30" value="7"></label>
           <label>Turn timer seconds <input name="turn_timer_seconds" type="number" min="0" max="600" value="0"></label>
+          <label>Map <select name="map_preset" id="mapPresetSelect"></select></label>
           <label>Map seed <input name="map_seed" placeholder="blank = random"></label>
         </div>
         <label class="check"><input name="random_map" type="checkbox" checked> Randomize standard map</label>
@@ -116,6 +117,13 @@
             <p id="discardNeed" class="subtle"></p>
             <div id="discardInputs" class="card-picker"></div>
             <button id="discardBtn" class="primary">Discard</button>
+          </section>
+
+          <section id="goldPanel" class="dock-card discard-dock hidden">
+            <h3>Gold</h3>
+            <p id="goldNeed" class="subtle"></p>
+            <div id="goldInputs" class="card-picker"></div>
+            <button id="goldBtn" class="primary">Take</button>
           </section>
         </section>
       </section>

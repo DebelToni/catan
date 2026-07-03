@@ -16,6 +16,7 @@ TERRAINS = {
     "hill": (188, 108, 37),
     "mountain": (141, 153, 174),
     "desert": (212, 163, 115),
+    "gold": (245, 185, 48),
     "sea": (201, 243, 244),
 }
 RESOURCES = {
@@ -103,6 +104,10 @@ def terrain_asset(name: str, color: tuple[int, int, int]) -> Image.Image:
     elif name == "desert":
         for y in range(100, 470, 80):
             draw.arc((-20, y, 540, y + 120), 180, 360, fill=(245, 214, 160, 125), width=8)
+    elif name == "gold":
+        for x in range(70, 470, 95):
+            for y in range(90, 450, 95):
+                draw.ellipse((x - 22, y - 15, x + 22, y + 15), fill=(255, 225, 84, 180), outline=(149, 95, 15, 130), width=3)
     elif name == "sea":
         for y in range(30, 512, 70):
             draw.arc((-30, y, 150, y + 70), 0, 180, fill=(111, 211, 230, 110), width=6)
